@@ -14,6 +14,18 @@ games: Dict[int, ChessGame] = {}
 # 创建命令处理器
 chess = on_command("chess", priority=10, block=True)
 
+HELP_TEXT = """可用子命令：
+chess join <white|black>  加入白方或黑方
+chess leave               离开游戏（认输）
+chess players             查看双方玩家
+chess board               显示当前棋盘
+chess move <走法>         走棋，如 e4 / Nf3 / e2e4
+chess takeback            提议悔棋（需对方 chess agree）
+chess draw                提议和棋（需对方 chess agree）
+chess agree               同意对方的提议
+chess help                显示本帮助"""
+
+
 @chess.handle()
 async def handle_chess(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
     group_id = event.group_id
@@ -21,10 +33,13 @@ async def handle_chess(bot: Bot, event: GroupMessageEvent, arg: Message = Comman
     # 获取子命令和参数
     args = arg.extract_plain_text().strip().split()
     if not args:
-        await chess.finish("请提供子命令，如 join, leave, players, board, move, takeback, draw, agree")
+        await chess.finish("chess 已就绪。\n" + HELP_TEXT)
 
     subcmd = args[0].lower()
     params = args[1:]
+
+    if subcmd in ("help", "h", "?"):
+        await chess.finish(HELP_TEXT)
 
     # 获取或创建游戏
     game = games.get(group_id)
