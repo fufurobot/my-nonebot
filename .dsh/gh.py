@@ -53,7 +53,18 @@ def main(argv: list[str]) -> int:
         print(__doc__, file=sys.stderr)
         return 2
     method, path = argv[1].upper(), argv[2]
-    body = argv[3] if len(argv) > 3 and argv[3] else None
+    body: str | None = None
+    body_file: Path | None = None
+    if len(argv) > 3 and argv[3]:
+        # A leading '@' means "read the payload from this file". Handing curl the
+        # file directly (--data-binary @file) avoids re-encoding a long body on
+        # the Windows command line, which corrupts non-ASCII JSON.
+        if argv[3].startswith("@"):
+            body_file = Path(argv[3][1:]).resolve()
+            if not body_file.is_file():
+                raise SystemExit(f"payload file not found: {body_file}")
+        else:
+            body = argv[3]
     url = path if path.startswith("http") else API + path
 
     cmd = [
@@ -74,7 +85,14 @@ def main(argv: list[str]) -> int:
         "-w",
         "\n%{http_code}",
     ]
-    if body:
+    if body_file is not None:
+        cmd += [
+            "-H",
+            "Content-Type: application/json; charset=utf-8",
+            "--data-binary",
+            f"@{body_file}",
+        ]
+    elif body is not None:
         cmd += ["-H", "Content-Type: application/json", "-d", body]
     cmd.append(url)
 
