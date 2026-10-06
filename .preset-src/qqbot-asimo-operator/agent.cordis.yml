@@ -1,0 +1,200 @@
+# QQ Bot / ASIMO operator — DSH agent preset
+#
+# Purpose: operate the two NapCatQQ instances and the NoneBot bot for the
+# dsh-bot project, and smoke-test it inside group 726525232.
+#
+# The preset pins `danger-full-access` for two independent, verified reasons:
+#
+#   1. Bootstrapping either NapCat instance requires writing outside the
+#      workspace. `launcher-user.bat` rewrites `qqnt.json` next to the QQ
+#      install and the Windows boot hook (`NapCatWinBootMain.exe` +
+#      `NapCatWinBootHook.dll`) injects into QQ.exe. A workspace-write sandbox
+#      denies both, and the launcher then exits with "Process exited."
+#      (Set-Content : Access to the path ...\qqnt.json is denied.)
+#
+#   2. `uv run nb run` cannot create its package cache under the sandbox. uv
+#      probes `C:\Users\fufu\AppData\Local\uv\cache` and, failing that, still
+#      cannot build a wheel in a workspace-local cache dir, because the dirs it
+#      creates inherit an AppContainer ACE it cannot subsequently remove:
+#         PermissionError: [WinError 5] Access is denied:
+#           ...\.uv-cache\builds-v0\.tmpXXXX\.tmp-XXXX\chess-1.11.2-py3-none-any.whl
+#      uv then falls back to building the 6 MB `chess` sdist and fails. The
+#      package and uv are both fine; only the sandbox blocks them.
+#
+# `approval: never` is deliberate: this profile is for unattended operation of
+# the bot stack, and every escalation it needs is already granted above.
+#
+# Read the companion skill `asimo-qq-operator` before acting. The single most
+# important operational rule is the EADDRINUSE/40653 discipline: both NapCat
+# instances share one QQ install and one internal packet port, and whichever
+# instance loses the race silently stops converting messages to OneBot events
+# while still heartbeating — which looks exactly like a bot bug.
+
+- id: sandbox-policy
+  name: '@deepseek-ai/dsh-sandbox-policy'
+  config:
+    mode: danger-full-access
+    workspaceRoot: !!js process.cwd()
+
+- id: approval
+  name: '@deepseek-ai/dsh-user-approval'
+  config:
+    policy: never
+
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    text: |-
+      You are a coding agent powered by the {{model}} model, running on the DeepSeek Harness on Windows. Your working directory is {{cwd}}.
+
+      You operate a QQ bot stack. There are two NapCatQQ instances and they are NOT interchangeable:
+
+      - **沐风63** (`369319889`) — the bot account. Instance dir `NapCat-QCE-Windows-x64`. It dials the bot as a reverse-WebSocket client to `ws://127.0.0.1:8080/onebot/v11/`. Start it with `quickmufeng.bat`.
+      - **ASIMO** (`1362015219`) — the test account. Instance dir `NapCat-QCE-Windows-x64 - Copy`. It serves the OneBot HTTP API on `127.0.0.1:8082` (token `eFyBfrJslorce3Ah`). Start it with `quickasimo.bat`.
+
+      NapCat root: `C:\Users\fufu\Downloads\NapCat-QCE-Windows-x64-v6.2.3`. Bot project: `{{cwd}}`. Test group: **726525232** only — never send to another group.
+
+      **Before starting anything, kill every `QQ` / `NapCatWinBootMain` process and free port 8080.** Both instances share one QQ installation and one internal packet port; if a stale instance holds it, the new one dies at startup with `listen EADDRINUSE: address already in use 0.0.0.0:40653`. The failure is deceptive — the WebSocket still connects and heartbeats still flow, but no message events ever arrive. Confirm health by counting `转化为 OB11Message` in the newest NapCat log: `0` means the pipeline is dead, non-zero means healthy.
+
+      The bot listens on 8080 and must be started with `uv run nb run`. Note that this forks a detached grandchild, so killing the job does NOT free 8080 — always re-check by port before restarting.
+
+      `ONEBOT_V11_ACCESS_TOKEN` in `.env` serves double duty (inbound WS auth and outbound API auth). It must be the **bot account's** token `Jbs_cqwRuXMHHIJH`. A mismatch is rejected at handshake with `403` and retried every 30s. Do not set `ONEBOT_V11_API_ROOTS`; replies travel back over the socket.
+
+      `/chess help` is the smoke test. Send it as a real QQ message from ASIMO via `POST http://127.0.0.1:8082/send_group_msg`, then read it back with `get_group_msg_history` and assert the reply came from `369319889`. A synthetic event POSTed straight to `http://127.0.0.1:8080/onebot/v11/http` (with the required `X-Self-ID` header) isolates plugin bugs from NapCat bugs — if that works but real messages do not, the fault is NapCat's event pipeline, not the bot.
+
+      This session runs unconfined (`danger-full-access`) because NapCat bootstrap and `uv` both genuinely require it. No file-write boundary is enforced, so stay inside the workspace unless the task requires otherwise, and never run a destructive command without a clear reason. In particular, do not edit files under `.venv/` and leave the edits behind: patching the OneBot adapter is a legitimate debugging technique, but it modifies a dependency.
+
+- id: agent-instructions
+  name: '@deepseek-ai/dsh-agent-instructions'
+  config:
+    maxBytes: 65536
+
+# ── shell ───────────────────────────────────────────────────────────────────
+
+- id: pwsh-sandbox
+  name: '@deepseek-ai/dsh-pwsh-sandbox'
+  disabled: false
+
+- id: tool-pwsh
+  name: '@deepseek-ai/dsh-tool-pwsh'
+  disabled: false
+
+# ── filesystem ──────────────────────────────────────────────────────────────
+
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    sampleOverCapGlobResults: false
+
+# ── background jobs ────────────────────────────────────────────────────────
+
+- id: tool-jobs
+  name: '@deepseek-ai/dsh-tool-jobs'
+
+# ── goals ───────────────────────────────────────────────────────────────────
+
+- id: command-goal
+  name: '@deepseek-ai/dsh-command-goal'
+
+- id: tool-goal
+  name: '@deepseek-ai/dsh-tool-goal'
+
+# ── plan mode ───────────────────────────────────────────────────────────────
+
+- id: planning
+  name: cordis:group
+  group: true
+  isolate:
+    planMode: true
+  config:
+    - id: plan-mode
+      name: '@deepseek-ai/dsh-plan-mode'
+
+# ── compaction ──────────────────────────────────────────────────────────────
+
+- id: compaction
+  name: cordis:group
+  group: true
+  isolate:
+    compaction: true
+    toolResultPruner: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: command-compact
+      name: '@deepseek-ai/dsh-command-compact'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+      config:
+        thresholdChars: 8192
+        headChars: 4096
+        tailChars: 1024
+
+# ── delegation and workflows ────────────────────────────────────────────────
+
+- id: delegation
+  name: cordis:group
+  group: true
+  isolate:
+    workflowEngine: true
+  config:
+    - id: tool-subagent-control
+      name: '@deepseek-ai/dsh-tool-subagent-control'
+
+    - id: tool-subagent-list-agents
+      name: '@deepseek-ai/dsh-tool-subagent-control/list-agents'
+
+    - id: tool-subagent
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: spawn
+        toolName: subagent
+        modelSelectionSettings: true
+        backgroundMode: continuable
+
+    - id: tool-subagent-fork
+      name: '@deepseek-ai/dsh-tool-subagent'
+      config:
+        provider: fork
+        toolName: subagent_fork
+        backgroundMode: continuable
+
+    - id: workflow-worker-thread
+      name: '@deepseek-ai/dsh-workflow-worker-thread'
+      config:
+        provider: spawn
+
+    - id: tool-workflow
+      name: '@deepseek-ai/dsh-tool-workflow'
+
+    - id: tool-ralph
+      name: '@deepseek-ai/dsh-tool-ralph'
+      config:
+        subagentProvider: spawn
+        maxRounds: 64
+
+# ── remaining model-facing rows ─────────────────────────────────────────────
+
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
+
+- id: tool-todo
+  name: '@deepseek-ai/dsh-tool-todo'
+  config:
+    allowParallelInProgress: true
+
+- id: tool-web
+  name: '@deepseek-ai/dsh-tool-web'
+  config:
+    fetch: true
+    searchTimeoutMs: 60000
+
+# ── skills ──────────────────────────────────────────────────────────────────
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
