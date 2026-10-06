@@ -15,15 +15,18 @@ games: Dict[int, ChessGame] = {}
 chess = on_command("chess", priority=10, block=True)
 
 HELP_TEXT = """可用子命令：
-chess join <white|black>  加入白方或黑方
-chess leave               离开游戏（认输）
+chess join <white|black>  加入白方或黑方（同方可多人，可重复加入另一方）
+chess leave / resign      离开游戏；本方最后一人离开即认输
 chess players             查看双方玩家
-chess board               显示当前棋盘
+chess board               显示当前棋盘（含 a-h / 1-8 坐标）
 chess move <走法>         走棋，如 e4 / Nf3 / e2e4
 chess takeback            提议悔棋（需对方 chess agree）
 chess draw                提议和棋（需对方 chess agree）
 chess agree               同意对方的提议
-chess help                显示本帮助"""
+chess help                显示本帮助
+
+规则：一方可有多名玩家共同操作；只要该方还有人，对局继续。
+该方最后一名玩家离开时判负，结束时的 PGN 会记录双方 QQ 号。"""
 
 
 @chess.handle()
@@ -63,39 +66,53 @@ async def handle_chess(bot: Bot, event: GroupMessageEvent, arg: Message = Comman
         side = params[0].lower()
         if side not in ["white", "black"]:
             await chess.finish("side 必须是 white 或 black")
-        # 检查用户是否已经在游戏中
-        if game.is_player(user_id):
-            await chess.finish("你已经在该游戏中了")
         if game.game_over:
             await chess.finish("游戏已经结束，请等待新游戏")
+        # 同一名玩家不能重复加入同一方，但可以加入另一方
+        if user_id in game.get_players_ordered(side):
+            await chess.finish(f"你已经在该游戏的 {side} 方了")
         # 加入
         success = game.add_player(user_id, side)
         if not success:
             await chess.finish(f"加入 {side} 失败，可能已存在")
-        # 检查双方是否都有玩家，如果有，自动开始（输出棋盘）
+        side_cn = "白方" if side == "white" else "黑方"
+        # 双方都有人即可开始；同方可有多人
         if game.white_players and game.black_players:
             board_str = game.get_board_str()
-            # 发送棋盘，并提示当前轮到谁
             turn = "白方" if game.board.turn == chess_lib.WHITE else "黑方"
-            await chess.send(f"双方准备就绪，游戏开始！\n{board_str}\n轮到 {turn} 走棋")
+            await chess.send(
+                f"{user_id} 加入 {side_cn}。双方准备就绪，游戏开始！\n"
+                f"{game.get_players_info()}\n"
+                f"{board_str}\n轮到 {turn} 走棋"
+            )
         else:
-            await chess.finish(f"你已加入 {side} 方，等待对手加入")
+            await chess.finish(
+                f"{user_id} 已加入 {side_cn}（当前 {len(game.get_players_ordered(side))} 人），等待对手加入"
+            )
 
-    elif subcmd == "leave":
+    elif subcmd in ("leave", "resign"):
         if game is None:
             await chess.finish("当前没有游戏")
+        if not game.is_player(user_id):
+            await chess.finish("你不在游戏中")
         # 移除玩家
         success, result = game.remove_player(user_id)
         if not success:
             await chess.finish("你不在游戏中")
         if result:
-            # 游戏结束，输出 PGN
+            # 该方最后一人离开，游戏结束，输出带 QQ 号的 PGN
             pgn = game.get_pgn()
-            await chess.send(f"游戏结束（因认输）\n最终结果：{result}\nPGN:\n{pgn}")
+            await chess.finish(
+                f"{user_id} 离开，其所在方无人应战，判负（认输）\n"
+                f"最终结果：{result}\n{game.get_players_info()}\nPGN:\n{pgn}"
+            )
             # 清理
             del games[group_id]
         else:
-            await chess.finish("你已离开游戏")
+            side = "白方" if game.get_side(user_id) == "white" else "黑方"
+            await chess.finish(
+                f"{user_id} 已离开游戏（{side}还剩 {len(game.get_players_ordered(game.get_side(user_id)))} 人，对局继续）"
+            )
 
     elif subcmd == "players":
         if game is None:

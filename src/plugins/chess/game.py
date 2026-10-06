@@ -1,7 +1,7 @@
 import chess
 import chess.pgn
-from typing import List, Set, Optional, Dict, Tuple
-from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
+from dataclasses import dataclass
 
 from .board_render import render_board
 
@@ -15,54 +15,54 @@ class ChessGame:
     def __init__(self, group_id: int):
         self.group_id = group_id
         self.board = chess.Board()
-        self.white_players: Set[str] = set()   # 存储用户 ID (str)
-        self.black_players: Set[str] = set()
+        # 玩家按加入顺序保存，便于在 PGN 中稳定输出 QQ 号
+        self.white_players: List[str] = []
+        self.black_players: List[str] = []
         self.move_history: List[str] = []      # 存储 SAN 格式的走法
         self.proposal: Optional[Proposal] = None
         self.game_over = False
         self.result = None   # "1-0", "0-1", "1/2-1/2"
 
+    def _roster(self, side: str) -> List[str]:
+        """返回某一方的玩家列表（按加入顺序）。"""
+        return self.white_players if side == "white" else self.black_players
+
+    def get_players_ordered(self, side: str) -> List[str]:
+        """按加入顺序返回某一方的 QQ 号列表。"""
+        return list(self._roster(side))
+
     def add_player(self, user_id: str, side: str) -> bool:
-        """加入游戏，side: 'white' 或 'black'，返回是否成功加入"""
+        """加入游戏，side: 'white' 或 'black'，返回是否成功加入。
+
+        允许多名玩家加入同一方，也允许同一名玩家同时加入两方（便于自测）。
+        """
         if self.game_over:
             return False
-        if side == "white":
-            if user_id in self.white_players:
-                return False
-            self.white_players.add(user_id)
-        else:
-            if user_id in self.black_players:
-                return False
-            self.black_players.add(user_id)
+        roster = self._roster(side)
+        if user_id in roster:
+            return False
+        roster.append(user_id)
         return True
 
     def remove_player(self, user_id: str) -> Tuple[bool, Optional[str]]:
-        """
-        移除玩家，返回 (是否移除成功, 如果导致游戏结束，返回结果)
+        """移除玩家，返回 (是否移除成功, 如果导致游戏结束，返回结果)。
+
+        只要该方还有队友，游戏就继续；只有**最后一名**玩家离开时，
+        该方才按认输处理，此时的比分才是最终结果。
         """
         removed = False
-        if user_id in self.white_players:
-            self.white_players.remove(user_id)
-            removed = True
-        elif user_id in self.black_players:
-            self.black_players.remove(user_id)
-            removed = True
+        for roster in (self.white_players, self.black_players):
+            if user_id in roster:
+                roster.remove(user_id)
+                removed = True
         if not removed:
             return False, None
 
-        # 检查是否有一方无人，视为认输
-        if not self.white_players and self.board.turn == chess.WHITE:
-            # 白方无人，但轮到白方走，实际上如果游戏还未结束，白方无人即认输
-            self.game_over = True
-            self.result = "0-1"
-            return True, self.result
-        if not self.black_players and self.board.turn == chess.BLACK:
-            self.game_over = True
-            self.result = "1-0"
-            return True, self.result
+        # 已经结束的对局不再改写结果
+        if self.game_over:
+            return True, None
 
-        # 也可能有一方无人但已经是另一方走完了？但通常认输是立即的
-        # 更严谨：只要有一方玩家为空，且游戏还未结束，就判该方负
+        # 只有一方彻底没人时才算认输
         if not self.white_players:
             self.game_over = True
             self.result = "0-1"
@@ -179,7 +179,7 @@ class ChessGame:
         return render_board(self.board)
 
     def get_pgn(self) -> str:
-        """生成完整的 PGN 字符串（包含最终结果）"""
+        """生成完整的 PGN 字符串（包含最终结果与双方 QQ 号）"""
         game = chess.pgn.Game()
         node = game
         # 从初始棋盘重放走法，逐层挂到主线（mainline）上
@@ -196,15 +196,23 @@ class ChessGame:
         # 添加其他头部
         game.headers["Event"] = "群聊对弈"
         game.headers["Site"] = f"群 {self.group_id}"
+        # 双方 QQ 号（可能有多人），写入 PGN 便于赛后追溯
+        game.headers["White"] = self.format_roster("white")
+        game.headers["Black"] = self.format_roster("black")
         # 导出
         exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
         return game.accept(exporter)
 
+    def format_roster(self, side: str) -> str:
+        """把某一方的 QQ 号列表格式化成 PGN 头部可用的字符串。"""
+        players = self.get_players_ordered(side)
+        return ", ".join(players) if players else "?"
+
     def get_players_info(self) -> str:
         """返回当前玩家列表"""
-        white = ", ".join(self.white_players) if self.white_players else "无"
-        black = ", ".join(self.black_players) if self.black_players else "无"
-        return f"白方: {white}\n黑方: {black}"
+        white = "、".join(self.white_players) if self.white_players else "无"
+        black = "、".join(self.black_players) if self.black_players else "无"
+        return f"白方({len(self.white_players)}人): {white}\n黑方({len(self.black_players)}人): {black}"
 
     def is_player(self, user_id: str) -> bool:
         return user_id in self.white_players or user_id in self.black_players
