@@ -36,10 +36,13 @@ COMPACT_LIMIT = 13  # fullwidth characters, i.e. 26 display units
 
 PIECES = set("♙♘♗♖♕♔♟♞♝♜♛♚")
 FULLWIDTH_FILES = set("ａｂｃｄｅｆｇｈ")
+FULLWIDTH_RANKS = set("１２３４５６７８")
 IDEOGRAPHIC_SPACE = "\u3000"
 BLACK_SQUARE = "■"
 
-ALLOWED_COMPACT_CHARS = PIECES | FULLWIDTH_FILES | {IDEOGRAPHIC_SPACE, BLACK_SQUARE}
+ALLOWED_COMPACT_CHARS = (
+    PIECES | FULLWIDTH_FILES | FULLWIDTH_RANKS | {IDEOGRAPHIC_SPACE, BLACK_SQUARE, "\n"}
+)
 
 
 def _compact_lines(game):
@@ -173,7 +176,7 @@ def test_normal_mode_still_uses_the_unicode_table(ChessGame):
 
 def test_unknown_mode_is_rejected(ChessGame):
     game = ChessGame(group_id=1)
-    with pytest.raises(ValueError, match="compact|normal|unknown"):
+    with pytest.raises(ValueError, match=r"compact|normal|unknown"):
         game.get_board_str(mode="definitely-not-a-mode")
 
 

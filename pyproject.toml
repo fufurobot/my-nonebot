@@ -103,7 +103,14 @@ ignore = [
     "COM812",  # missing-trailing-comma
     "PLC0415", # import-outside-top-level
 ]
-allowed-confusables = ["，", "。", "“", "”", "：", "；", "？", "！", "【", "】", "《", "》", "…", "—", "（", "）", "、"]
+# These are deliberate, not typos: the compact board format is built from
+# fullwidth characters precisely because CJK fonts render them two columns wide.
+allowed-confusables = [
+    "，", "。", "“", "”", "：", "；", "？", "！", "【", "】", "《", "》", "…", "—", "（", "）", "、",
+    "ａ", "ｂ", "ｃ", "ｄ", "ｅ", "ｆ", "ｇ", "ｈ",
+    "１", "２", "３", "４", "５", "６", "７", "８",
+    "　",
+]
 
 [tool.ruff.lint.pyupgrade]
 keep-runtime-typing = true

@@ -1,0 +1,14 @@
+{#-
+  Compact board: every line is at most 13 fullwidth characters (26 units).
+
+  Row layout, 9 characters wide:
+      8 squares (one glyph each) + 1 fullwidth space + 1 fullwidth rank digit
+
+  File letters are printed once above and once below the ranks, 8 wide, which
+  keeps every line inside the limit. Only the two-unit characters are used:
+  the chess pieces, the fullwidth letters/digits, U+3000 and the black square.
+-#}
+{% for row in rows -%}
+{{ row.cells | map(attribute='glyph') | join }}{{ space }}{{ row.rank }}
+{% endfor -%}
+{{ files | join }}

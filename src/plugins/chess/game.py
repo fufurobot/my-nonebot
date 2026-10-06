@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import chess
 import chess.pgn
 
-from .board_render import render_board
+from . import board_templates
 
 
 @dataclass
@@ -186,9 +186,13 @@ class ChessGame:
 
         return False, "未知提议类型", None
 
-    def get_board_str(self) -> str:
-        """返回带 a-h / 1-8 坐标的 Unicode 棋盘字符串"""
-        return render_board(self.board)
+    def get_board_str(self, mode: str | None = None) -> str:
+        """返回棋盘字符串。
+
+        ``mode`` 选择 ``board_templates`` 中的模板，默认使用紧凑模式。
+        传 ``"normal"`` 可得到带表格线的 Unicode 棋盘。
+        """
+        return board_templates.render(self.board, mode)
 
     def get_pgn(self) -> str:
         """生成完整的 PGN 字符串（包含最终结果与双方 QQ 号）"""

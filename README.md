@@ -52,13 +52,50 @@ default). `/chess help` reprints this list in chat.
 | `chess takeback` | Propose taking a move back; the opponent confirms with `chess agree`. |
 | `chess draw` | Propose a draw; the opponent confirms with `chess agree`. |
 | `chess agree` | Accept the pending proposal. |
+| `chess mode [name]` | Show or switch the board template for this group. |
 | `chess help` | Show help. |
 
-### The board
+### Board templates
 
-The board is drawn as a bordered grid of Unicode pieces, with file letters
-`a`–`h` above and below it and a rank digit `1`–`8` on every row, so you can read
-a square straight off the picture rather than counting:
+Board formats are Jinja templates under `src/plugins/chess/templates/`, so a new
+format is just a new `.j2` file — `AVAILABLE_MODES` is discovered from that
+directory. The mode is per group, chosen with `chess mode`, and every board
+output (`chess board`, join, move replies) uses it.
+
+#### `compact` (default)
+
+Built for fixed-width CJK fonts, where each character below occupies **two
+columns**. Every line is at most **13 characters** wide:
+
+```
+♜♞♝♛♚♝♞♜　８
+♟♟♟♟♟♟♟♟　７
+■■■■■■■■　６
+■■■■■■■■　５
+■■■■■■■■　４
+■■■■■■■■　３
+♙♙♙♙♙♙♙♙　２
+♖♘♗♕♔♗♘♖　１
+ａｂｃｄｅｆｇｈ
+```
+
+It uses only these characters:
+
+| Purpose | Characters |
+| --- | --- |
+| Pieces | `♙♘♗♖♕♔` (white), `♟♞♝♜♛♚` (black) |
+| File letters | `ａｂｃｄｅｆｇｈ` |
+| Rank digits | `１２３４５６７８` |
+| Blank | `　` (U+3000 ideographic space) |
+| Empty square | `■` (black square) |
+
+No ASCII and no box-drawing characters appear, because those are one column wide
+and would break the two-column grid. Ranks run top (8) to bottom (1), and `ａ`
+sits under the a-file.
+
+#### `normal`
+
+The bordered grid, for clients that render a proportional font predictably:
 
 ```
 ┌───┬───┬───┬───┬───┬───┬───┬───┐
@@ -76,6 +113,15 @@ a square straight off the picture rather than counting:
 │ a │ b │ c │ d │ e │ f │ g │ h │
 └───┴───┴───┴───┴───┴───┴───┴───┘
 ```
+
+#### Adding a template
+
+1. Add `src/plugins/chess/templates/<name>.j2`. It receives the context from
+   `board_templates.build_context()`: `files`, `ranks`, `ascii_files`,
+   `ascii_ranks`, `space`, `blank`, and `rows` — each row carrying `rank`,
+   `ascii_rank` and eight `cells` (each with `glyph` and `ascii_glyph`).
+2. It is picked up automatically: `chess mode <name>` works and `chess help`
+   lists it.
 
 ### Team play and resigning
 
@@ -105,8 +151,10 @@ uv run ruff format src tests
 uv run ruff check src/plugins/chess tests
 ```
 
-The suite covers the board renderer, team/resign semantics and PGN headers, and
-parses the CI configuration so a pipeline gate cannot silently disappear.
+The suite covers both board templates (including the compact 13-character width
+limit and its restricted character set), team/resign semantics and PGN headers,
+per-group template selection, and parses the CI configuration so a pipeline gate
+cannot silently disappear.
 
 ## Continuous integration
 
