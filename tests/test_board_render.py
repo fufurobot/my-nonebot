@@ -58,8 +58,8 @@ def test_board_lines_are_equal_width(ChessGame):
 
 def test_board_reflects_a_move(ChessGame):
     game = ChessGame(group_id=1)
-    game.white_players.add("10001")
-    game.black_players.add("10002")
+    game.add_player("10001", "white")
+    game.add_player("10002", "black")
     before = game.get_board_str()
     ok, _, _ = game.make_move("10001", "e4")
     assert ok
@@ -76,8 +76,8 @@ def test_empty_squares_are_labelled_not_blank(ChessGame):
 @pytest.mark.parametrize("san,expect_marker", [("e4", "e4"), ("Nf3", "Nf3")])
 def test_board_export_is_stable_across_moves(ChessGame, san, expect_marker):
     game = ChessGame(group_id=1)
-    game.white_players.add("10001")
-    game.black_players.add("10002")
+    game.add_player("10001", "white")
+    game.add_player("10002", "black")
     ok, _, _ = game.make_move("10001", san)
     assert ok
     assert "│" in game.get_board_str()
@@ -85,8 +85,8 @@ def test_board_export_is_stable_across_moves(ChessGame, san, expect_marker):
 
 def test_board_renders_after_castling(ChessGame):
     game = ChessGame(group_id=1)
-    game.white_players.add("10001")
-    game.black_players.add("10002")
+    game.add_player("10001", "white")
+    game.add_player("10002", "black")
     for san in ("e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "O-O"):
         mover = "10001" if game.board.turn == chess.WHITE else "10002"
         ok, msg, _ = game.make_move(mover, san)

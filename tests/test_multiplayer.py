@@ -29,14 +29,13 @@ def test_multiple_players_can_join_the_same_side(ChessGame):
     assert game.add_player("10001", "white") is True
     assert game.add_player("10002", "white") is True
     assert game.add_player("10003", "white") is True
-    assert game.white_players == {"10001", "10002", "10003"}
+    assert game.get_players_ordered("white") == ["10001", "10002", "10003"]
 
 
 def test_players_are_recorded_in_join_order(ChessGame):
     game = _started(ChessGame)
     for user in ("10003", "10001", "10002"):
         game.add_player(user, "black")
-    assert game.black_players == {"10001", "10002", "10003"}
     assert game.get_players_ordered("black") == ["10003", "10001", "10002"]
 
 
@@ -52,7 +51,7 @@ def test_joining_the_same_side_twice_is_rejected(ChessGame):
     game = _started(ChessGame)
     assert game.add_player("10001", "white") is True
     assert game.add_player("10001", "white") is False
-    assert game.white_players == {"10001"}
+    assert game.get_players_ordered("white") == ["10001"]
 
 
 def test_any_side_member_may_move(ChessGame):
@@ -90,7 +89,7 @@ def test_leaving_with_a_teammate_left_keeps_the_game_alive(ChessGame):
     assert removed is True
     assert result is None, "game must continue while a teammate remains"
     assert game.game_over is False
-    assert game.white_players == {"10002"}
+    assert game.get_players_ordered("white") == ["10002"]
 
 
 def test_last_player_leaving_resigns_that_side(ChessGame):
