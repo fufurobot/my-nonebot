@@ -5,23 +5,38 @@ from nonebot.params import CommandArg
 
 import chess as chess_lib
 
+from . import board_templates
 from .game import ChessGame
 
 # 存储每个群的游戏状态
 games: dict[int, ChessGame] = {}
 
+# 每个群选择的棋盘显示模板（默认紧凑模式）
+board_modes: dict[int, str] = {}
+
 # 创建命令处理器
 chess = on_command("chess", priority=10, block=True)
 
-HELP_TEXT = """可用子命令：
+
+def _mode_for(group_id: int) -> str:
+    """返回该群当前使用的棋盘模板名。"""
+    mode = board_modes.get(group_id, board_templates.DEFAULT_MODE)
+    if mode not in board_templates.AVAILABLE_MODES:
+        return board_templates.DEFAULT_MODE
+    return mode
+
+
+HELP_TEXT = f"""可用子命令：
 chess join <white|black>  加入白方或黑方（同方可多人，可重复加入另一方）
 chess leave / resign      离开游戏；本方最后一人离开即认输
 chess players             查看双方玩家
-chess board               显示当前棋盘（含 a-h / 1-8 坐标）
+chess board               显示当前棋盘
 chess move <走法>         走棋，如 e4 / Nf3 / e2e4
 chess takeback            提议悔棋（需对方 chess agree）
 chess draw                提议和棋（需对方 chess agree）
 chess agree               同意对方的提议
+chess mode [模板]         查看或切换棋盘模板
+                          （可选：{" / ".join(board_templates.AVAILABLE_MODES)}）
 chess help                显示本帮助
 
 规则：一方可有多名玩家共同操作；只要该方还有人，对局继续。
@@ -52,6 +67,20 @@ async def handle_chess(  # noqa: C901, PLR0912, PLR0915
     if subcmd in ("help", "h", "?"):
         await chess.finish(HELP_TEXT)
 
+    # 棋盘模板切换不依赖对局，单独处理
+    if subcmd in ("mode", "template", "format"):
+        if not params:
+            current = _mode_for(group_id)
+            options = " / ".join(board_templates.AVAILABLE_MODES)
+            await chess.finish(f"当前棋盘模板：{current}\n可选：{options}")
+        requested = params[0].lower()
+        if requested not in board_templates.AVAILABLE_MODES:
+            options = " / ".join(board_templates.AVAILABLE_MODES)
+            await chess.finish(f"未知模板 {requested}，可选：{options}")
+        board_modes[group_id] = requested
+        demo = board_templates.render(chess_lib.Board(), requested)
+        await chess.finish(f"棋盘模板已切换为 {requested}\n{demo}")
+
     # 获取或创建游戏
     game = games.get(group_id)
     if subcmd not in ["join", "players", "board"]:
@@ -63,6 +92,9 @@ async def handle_chess(  # noqa: C901, PLR0912, PLR0915
             del games[group_id]
             game = None
             await chess.finish("上一局游戏已结束，请使用 chess join 开始新游戏")
+
+    # 使用当前群选择的模板
+    mode = _mode_for(group_id)
 
     # 处理子命令
     if subcmd == "join":
@@ -86,7 +118,7 @@ async def handle_chess(  # noqa: C901, PLR0912, PLR0915
         side_cn = "白方" if side == "white" else "黑方"
         # 双方都有人即可开始；同方可有多人
         if game.white_players and game.black_players:
-            board_str = game.get_board_str()
+            board_str = game.get_board_str(mode)
             turn = "白方" if game.board.turn == chess_lib.WHITE else "黑方"
             await chess.send(
                 f"{user_id} 加入 {side_cn}。双方准备就绪，游戏开始！\n"
@@ -134,7 +166,7 @@ async def handle_chess(  # noqa: C901, PLR0912, PLR0915
     elif subcmd == "board":
         if game is None:
             await chess.finish("当前没有游戏")
-        board_str = game.get_board_str()
+        board_str = game.get_board_str(mode)
         turn = "白方" if game.board.turn == chess_lib.WHITE else "黑方"
         await chess.finish(f"{board_str}\n轮到 {turn} 走棋")
 
@@ -148,7 +180,7 @@ async def handle_chess(  # noqa: C901, PLR0912, PLR0915
         if not success:
             await chess.finish(msg)
         # 走法成功，输出新棋盘
-        board_str = game.get_board_str()
+        board_str = game.get_board_str(mode)
         if result:
             # 游戏结束
             pgn = game.get_pgn()
@@ -197,7 +229,7 @@ async def handle_chess(  # noqa: C901, PLR0912, PLR0915
             del games[group_id]
         else:
             # 如果是悔棋成功，显示新棋盘
-            board_str = game.get_board_str()
+            board_str = game.get_board_str(mode)
             turn = "白方" if game.board.turn == chess_lib.WHITE else "黑方"
             await chess.finish(f"{msg}\n{board_str}\n轮到 {turn} 走棋")
 

@@ -1,0 +1,19 @@
+{#-
+  Normal board: the bordered Unicode grid with a-h / 1-8 coordinates.
+
+  This format is not width-constrained, so it keeps the ASCII coordinate labels
+  and the light/dark square markers that make the checkerboard readable.
+
+  Every line is padded to the same display width, because QQ renders messages in
+  a proportional font and ragged lines destroy the grid.
+-#}
+{% set gutter = '  ' -%}
+┌{% for f in ascii_files %}───{% if not loop.last %}┬{% endif %}{% endfor %}┐{{ gutter }}
+│{% for f in ascii_files %} {{ f }} {% if not loop.last %}│{% endif %}{% endfor %}│{{ gutter }}
+├{% for f in ascii_files %}───{% if not loop.last %}┼{% endif %}{% endfor %}┤{{ gutter }}
+{% for row in rows -%}
+│{% for cell in row.cells %} {{ cell.ascii_glyph }} {% if not loop.last %}│{% endif %}{% endfor %}│ {{ row.ascii_rank }}
+{% endfor -%}
+├{% for f in ascii_files %}───{% if not loop.last %}┼{% endif %}{% endfor %}┤{{ gutter }}
+│{% for f in ascii_files %} {{ f }} {% if not loop.last %}│{% endif %}{% endfor %}│{{ gutter }}
+└{% for f in ascii_files %}───{% if not loop.last %}┴{% endif %}{% endfor %}┘{{ gutter }}
