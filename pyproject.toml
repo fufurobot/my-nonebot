@@ -22,6 +22,12 @@ dev = [
 plugin_dirs = ["src/plugins"]
 builtin_plugins = ["echo"]
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+addopts = "-q -p no:cacheprovider"
+
 [tool.nonebot.adapters]
 nonebot-adapter-onebot = [
     { name = "OneBot V11", module_name = "nonebot.adapters.onebot.v11" }
@@ -105,5 +111,7 @@ keep-runtime-typing = true
 dev = [
     "nb-cli>=1.7.4",
     "ruff>=0.16.3",
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
 ]
 
