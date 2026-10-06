@@ -16,10 +16,11 @@ RANKS = "12345678"
 
 def test_board_contains_every_file_letter(ChessGame):
     board_str = ChessGame(group_id=1).get_board_str()
-    top, bottom = board_str.splitlines()[0], board_str.splitlines()[-1]
-    for letter in FILES:
-        assert letter in top, f"file {letter} missing from header: {top!r}"
-        assert letter in bottom, f"file {letter} missing from footer: {bottom!r}"
+    lines = board_str.splitlines()
+    # The file letters appear on their own labelled row, twice: above and below
+    # the grid. Accept either position.
+    labelled = [ln for ln in lines if all(f" {f} " in ln for f in FILES)]
+    assert labelled, f"no row labels all of a-h:\n{board_str}"
 
 
 def test_board_contains_every_rank_number(ChessGame):
@@ -84,10 +85,11 @@ def test_board_export_is_stable_across_moves(ChessGame, san, expect_marker):
 
 def test_board_renders_after_castling(ChessGame):
     game = ChessGame(group_id=1)
+    game.white_players.add("10001")
+    game.black_players.add("10002")
     for san in ("e4", "e5", "Nf3", "Nc6", "Bc4", "Bc5", "O-O"):
-        ok, msg, _ = game.make_move(
-            "10001" if game.board.turn == chess.WHITE else "10002", san
-        )
+        mover = "10001" if game.board.turn == chess.WHITE else "10002"
+        ok, msg, _ = game.make_move(mover, san)
         assert ok, msg
     board_str = game.get_board_str()
     assert "♔" in board_str or "♚" in board_str

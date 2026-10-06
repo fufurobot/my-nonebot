@@ -1,8 +1,9 @@
 import chess
 import chess.pgn
-import io
 from typing import List, Set, Optional, Dict, Tuple
 from dataclasses import dataclass, field
+
+from .board_render import render_board
 
 @dataclass
 class Proposal:
@@ -174,8 +175,8 @@ class ChessGame:
         return False, "未知提议类型", None
 
     def get_board_str(self) -> str:
-        """返回 Unicode 棋盘字符串"""
-        return str(self.board)  # 默认就是 Unicode 字符
+        """返回带 a-h / 1-8 坐标的 Unicode 棋盘字符串"""
+        return render_board(self.board)
 
     def get_pgn(self) -> str:
         """生成完整的 PGN 字符串（包含最终结果）"""
