@@ -109,7 +109,12 @@ celerybeat.pid
 *.sage.py
 
 # Environments
+# `.env` matches only that exact name, so the tooling variants must be listed
+# explicitly -- otherwise a secret-bearing file shows up as untracked and gets
+# committed by the next `git add .`.
 .env
+.env.*
+!.env.example
 .venv
 env/
 venv/

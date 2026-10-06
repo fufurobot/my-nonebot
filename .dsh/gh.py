@@ -6,7 +6,8 @@ fail), but the MSYS2 `curl` binary works. So this helper shells out to curl and
 only uses Python for argument handling and JSON pretty-printing.
 
 Reads the token from the GITHUB_TOKEN environment variable, falling back to the
-GITHUB_TOKEN= line of the repo-root .env file (which is gitignored).
+GITHUB_TOKEN= line of the repo-root `.env.tooling` (gitignored, and NOT loaded by
+the bot) or `.env`.
 
 Usage:
     python .dsh/gh.py GET  /repos/owner/repo
@@ -30,15 +31,25 @@ CURL_CANDIDATES = (
 
 
 def token() -> str:
+    """Read the token from the environment, then from the tooling env file.
+
+    ``.env.tooling`` is deliberately separate from ``.env``: NoneBot logs its
+    whole loaded config when ``LOG_LEVEL=DEBUG``, so a token kept in ``.env``
+    would be printed by the bot.
+    """
     env = os.environ.get("GITHUB_TOKEN")
     if env:
         return env.strip()
-    env_file = Path(__file__).resolve().parent.parent / ".env"
-    if env_file.is_file():
+    for name in (".env.tooling", ".env"):
+        env_file = Path(__file__).resolve().parent.parent / name
+        if not env_file.is_file():
+            continue
         for line in env_file.read_text(encoding="utf-8").splitlines():
             if line.strip().startswith("GITHUB_TOKEN="):
-                return line.split("=", 1)[1].strip()
-    raise SystemExit("no GITHUB_TOKEN in environment or .env")
+                value = line.split("=", 1)[1].strip()
+                if value:
+                    return value
+    raise SystemExit("no GITHUB_TOKEN in environment, .env.tooling or .env")
 
 
 def curl_binary() -> str:
