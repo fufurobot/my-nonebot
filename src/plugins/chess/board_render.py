@@ -73,12 +73,8 @@ def render_board(board: chess.Board) -> str:
 
     header = TOP_LEFT + TOP_MID.join(span for _ in FILES) + TOP_RIGHT + gutter
     footer = BOT_LEFT + BOT_MID.join(span for _ in FILES) + BOT_RIGHT + gutter
-    files_row = (
-        VERTICAL + VERTICAL.join(f" {f} " for f in FILES) + VERTICAL + gutter
-    )
-    separator = (
-        MID_LEFT + MID_MID.join(span for _ in FILES) + MID_RIGHT + gutter
-    )
+    files_row = VERTICAL + VERTICAL.join(f" {f} " for f in FILES) + VERTICAL + gutter
+    separator = MID_LEFT + MID_MID.join(span for _ in FILES) + MID_RIGHT + gutter
 
     lines = [header, files_row, separator]
 

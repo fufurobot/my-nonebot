@@ -159,7 +159,7 @@ def test_env_example_token_value_is_empty_or_dummy():
 
 def test_tracked_files_contain_no_secret_like_values():
     """The workflow files and env template must never embed a credential."""
-    for path in list(GITHUB_WORKFLOWS.glob("*.yml")) + [GITLAB_CI, ENV_EXAMPLE]:
+    for path in [*GITHUB_WORKFLOWS.glob("*.yml"), GITLAB_CI, ENV_EXAMPLE]:
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8")
