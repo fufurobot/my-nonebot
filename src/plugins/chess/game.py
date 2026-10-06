@@ -1,33 +1,36 @@
-import chess
-import chess.pgn
-from typing import List, Optional, Tuple
 from dataclasses import dataclass
 
+import chess
+import chess.pgn
+
 from .board_render import render_board
+
 
 @dataclass
 class Proposal:
     """表示一个待同意的提议（悔棋或和棋）"""
-    type: str          # "takeback" 或 "draw"
-    proposer: str      # 提议者的 QQ 号或昵称
+
+    type: str  # "takeback" 或 "draw"
+    proposer: str  # 提议者的 QQ 号或昵称
+
 
 class ChessGame:
-    def __init__(self, group_id: int):
+    def __init__(self, group_id: int) -> None:
         self.group_id = group_id
         self.board = chess.Board()
         # 玩家按加入顺序保存，便于在 PGN 中稳定输出 QQ 号
-        self.white_players: List[str] = []
-        self.black_players: List[str] = []
-        self.move_history: List[str] = []      # 存储 SAN 格式的走法
-        self.proposal: Optional[Proposal] = None
+        self.white_players: list[str] = []
+        self.black_players: list[str] = []
+        self.move_history: list[str] = []  # 存储 SAN 格式的走法
+        self.proposal: Proposal | None = None
         self.game_over = False
-        self.result = None   # "1-0", "0-1", "1/2-1/2"
+        self.result = None  # "1-0", "0-1", "1/2-1/2"
 
-    def _roster(self, side: str) -> List[str]:
+    def _roster(self, side: str) -> list[str]:
         """返回某一方的玩家列表（按加入顺序）。"""
         return self.white_players if side == "white" else self.black_players
 
-    def get_players_ordered(self, side: str) -> List[str]:
+    def get_players_ordered(self, side: str) -> list[str]:
         """按加入顺序返回某一方的 QQ 号列表。"""
         return list(self._roster(side))
 
@@ -44,7 +47,7 @@ class ChessGame:
         roster.append(user_id)
         return True
 
-    def remove_player(self, user_id: str) -> Tuple[bool, Optional[str]]:
+    def remove_player(self, user_id: str) -> tuple[bool, str | None]:
         """移除玩家，返回 (是否移除成功, 如果导致游戏结束，返回结果)。
 
         只要该方还有队友，游戏就继续；只有**最后一名**玩家离开时，
@@ -74,9 +77,13 @@ class ChessGame:
 
         return True, None
 
-    def make_move(self, user_id: str, move_str: str) -> Tuple[bool, str, Optional[str]]:
-        """
-        尝试走棋，返回 (成功, 信息, 如果导致游戏结束，返回结果)
+    def make_move(  # noqa: C901, PLR0911
+        self, user_id: str, move_str: str
+    ) -> tuple[bool, str, str | None]:
+        """尝试走棋，返回 (成功, 信息, 如果导致游戏结束，返回结果)。
+
+        每个合法走法都对应一种终局判定，因此这里必然有多个提前返回；
+        拆分会把一个线性规则表打散成难以对照的若干函数。
         """
         if self.game_over:
             return False, "游戏已经结束", None
@@ -112,7 +119,9 @@ class ChessGame:
         # 检查游戏是否结束
         if self.board.is_checkmate():
             self.game_over = True
-            self.result = "1-0" if self.board.turn == chess.BLACK else "0-1"  # 注意 turn 已经切换
+            self.result = (
+                "1-0" if self.board.turn == chess.BLACK else "0-1"
+            )  # 注意 turn 已经切换
             return True, f"将杀！{san}", self.result
         if self.board.is_stalemate():
             self.game_over = True
@@ -146,9 +155,12 @@ class ChessGame:
         self.proposal = Proposal("draw", user_id)
         return True
 
-    def agree(self, user_id: str) -> Tuple[bool, str, Optional[str]]:
+    def agree(self, user_id: str) -> tuple[bool, str, str | None]:  # noqa: ARG002
         """
         同意当前的提议，返回 (成功, 信息, 如果游戏结束，结果)
+
+        ``user_id`` 保留在签名中：调用方需要知道是谁同意的（用于日志与
+        权限校验），只是当前判定逻辑还不需要用到它。
         """
         if not self.proposal:
             return False, "当前没有待处理的提议", None
@@ -166,7 +178,7 @@ class ChessGame:
             # 游戏如果之前结束，现在可能重新开始（但此时游戏未结束）
             return True, "悔棋成功", None
 
-        elif self.proposal.type == "draw":
+        if self.proposal.type == "draw":
             self.game_over = True
             self.result = "1/2-1/2"
             self.proposal = None
@@ -200,7 +212,9 @@ class ChessGame:
         game.headers["White"] = self.format_roster("white")
         game.headers["Black"] = self.format_roster("black")
         # 导出
-        exporter = chess.pgn.StringExporter(headers=True, variations=False, comments=False)
+        exporter = chess.pgn.StringExporter(
+            headers=True, variations=False, comments=False
+        )
         return game.accept(exporter)
 
     def format_roster(self, side: str) -> str:
@@ -212,12 +226,15 @@ class ChessGame:
         """返回当前玩家列表"""
         white = "、".join(self.white_players) if self.white_players else "无"
         black = "、".join(self.black_players) if self.black_players else "无"
-        return f"白方({len(self.white_players)}人): {white}\n黑方({len(self.black_players)}人): {black}"
+        return (
+            f"白方({len(self.white_players)}人): {white}\n"
+            f"黑方({len(self.black_players)}人): {black}"
+        )
 
     def is_player(self, user_id: str) -> bool:
         return user_id in self.white_players or user_id in self.black_players
 
-    def get_side(self, user_id: str) -> Optional[str]:
+    def get_side(self, user_id: str) -> str | None:
         if user_id in self.white_players:
             return "white"
         if user_id in self.black_players:

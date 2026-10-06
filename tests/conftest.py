@@ -11,9 +11,12 @@ from __future__ import annotations
 import importlib.util
 import sys
 from pathlib import Path
-from types import ModuleType
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from types import ModuleType
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGIN_DIR = REPO_ROOT / "src" / "plugins" / "chess"
@@ -45,7 +48,8 @@ def _load_chess_package() -> ModuleType:
         submodule_search_locations=[str(PLUGIN_DIR)],
     )
     if spec is None or spec.loader is None:  # pragma: no cover - defensive
-        raise ImportError(f"cannot load chess plugin from {PLUGIN_DIR}")
+        msg = f"cannot load chess plugin from {PLUGIN_DIR}"
+        raise ImportError(msg)
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)

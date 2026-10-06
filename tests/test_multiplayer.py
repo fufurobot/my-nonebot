@@ -14,9 +14,8 @@ from __future__ import annotations
 import chess
 
 
-def _started(ChessGame, **kwargs):
-    game = ChessGame(group_id=1, **kwargs)
-    return game
+def _started(ChessGame, **kwargs: object):
+    return ChessGame(group_id=1, **kwargs)
 
 
 # --------------------------------------------------------------------------
@@ -145,7 +144,7 @@ def test_leaving_does_not_end_an_already_finished_game(ChessGame):
     game.game_over = True
     game.result = "1-0"
 
-    removed, result = game.remove_player("10001")
+    removed, _ = game.remove_player("10001")
 
     assert removed is True
     assert game.result == "1-0", "the recorded result must not be overwritten"
@@ -187,8 +186,8 @@ def test_pgn_lists_multiple_players_per_side(ChessGame):
     game.add_player("20002", "black")
 
     pgn = game.get_pgn()
-    white_line = next(ln for ln in pgn.splitlines() if ln.startswith('[White '))
-    black_line = next(ln for ln in pgn.splitlines() if ln.startswith('[Black '))
+    white_line = next(ln for ln in pgn.splitlines() if ln.startswith("[White "))
+    black_line = next(ln for ln in pgn.splitlines() if ln.startswith("[Black "))
 
     assert "10001" in white_line and "10002" in white_line
     assert "20001" in black_line and "20002" in black_line

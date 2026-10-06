@@ -1,0 +1,133 @@
+# GitLab CI/CD pipeline for the NoneBot chess plugin.
+#
+# Mirrors .github/workflows/ci.yml so the project can be mirrored to GitLab
+# without losing verification. The default image ships Python 3.13 and `uv` is
+# installed through the official installer, which keeps the pipeline portable
+# across runners.
+#
+# Secrets are never referenced here. Any variable a contributor needs locally is
+# documented in .env.example.
+
+stages:
+  - lint
+  - test
+  - config
+  - package
+
+default:
+  image: python:3.13-slim
+  # Fail fast on a hung dependency install instead of burning runner minutes.
+  timeout: 30m
+  interruptible: true
+  cache:
+    # uv.lock is gitignored, so the cache key must not depend on it exclusively.
+    key:
+      files:
+        - pyproject.toml
+    paths:
+      - .uv-cache/
+
+variables:
+  # Keep uv inside the project so the cache directive above can persist it.
+  UV_CACHE_DIR: "$CI_PROJECT_DIR/.uv-cache"
+  UV_LINK_MODE: copy
+  PYTHONIOENCODING: utf-8
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+# Reused by every job that needs the toolchain.
+.uv-setup: &uv-setup
+  - apt-get update -qq && apt-get install -y -qq --no-install-recommends git curl
+  - curl -LsSf https://astral.sh/uv/install.sh | sh
+  - export PATH="$HOME/.local/bin:$PATH"
+  - uv --version
+  - uv sync --all-groups
+
+# ---------------------------------------------------------------------------
+# lint
+# ---------------------------------------------------------------------------
+ruff-format:
+  stage: lint
+  script:
+    - *uv-setup
+    - uv run ruff format --check src tests
+
+ruff-check:
+  stage: lint
+  script:
+    - *uv-setup
+    - uv run ruff check src/plugins/chess tests
+
+# ---------------------------------------------------------------------------
+# test
+# ---------------------------------------------------------------------------
+pytest:3.13:
+  stage: test
+  script:
+    - *uv-setup
+    - uv run pytest tests -q
+  variables:
+    ENVIRONMENT: test
+    DRIVER: "~none"
+  artifacts:
+    when: on_failure
+    expire_in: 1 week
+    reports:
+      junit: junit.xml
+
+pytest:3.12:
+  stage: test
+  image: python:3.12-slim
+  script:
+    - *uv-setup
+    - uv run pytest tests -q
+  variables:
+    ENVIRONMENT: test
+    DRIVER: "~none"
+
+pytest:3.10:
+  stage: test
+  image: python:3.10-slim
+  script:
+    - *uv-setup
+    - uv run pytest tests -q
+  variables:
+    ENVIRONMENT: test
+    DRIVER: "~none"
+
+# ---------------------------------------------------------------------------
+# config — guard the deployment surface and the repository's secret hygiene
+# ---------------------------------------------------------------------------
+validate-config:
+  stage: config
+  script:
+    - *uv-setup
+    - test -f .env.example || { echo ".env.example is missing"; exit 1; }
+    - uv run pytest tests/test_ci_config.py -q
+
+secret-scan:
+  stage: config
+  script:
+    - *uv-setup
+    - |
+      if git grep -nIE 'github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{15,}' -- .; then
+        echo "a credential-shaped string is committed to the repository"
+        exit 1
+      fi
+      echo "no credentials found in tracked files"
+
+# ---------------------------------------------------------------------------
+# package — prove the project still resolves and builds cleanly
+# ---------------------------------------------------------------------------
+build-wheel:
+  stage: package
+  script:
+    - *uv-setup
+    - uv build
+  artifacts:
+    name: "dist-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - dist/
+    expire_in: 1 month
+  rules:
+    - if: $CI_COMMIT_TAG
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH

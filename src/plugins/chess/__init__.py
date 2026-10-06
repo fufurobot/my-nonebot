@@ -1,15 +1,14 @@
-import chess as chess_lib
 from nonebot import on_command
 from nonebot.adapters import Message
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent
 from nonebot.params import CommandArg
 
-from typing import Dict
+import chess as chess_lib
 
 from .game import ChessGame
 
 # 存储每个群的游戏状态
-games: Dict[int, ChessGame] = {}
+games: dict[int, ChessGame] = {}
 
 # 创建命令处理器
 chess = on_command("chess", priority=10, block=True)
@@ -30,7 +29,16 @@ chess help                显示本帮助
 
 
 @chess.handle()
-async def handle_chess(bot: Bot, event: GroupMessageEvent, arg: Message = CommandArg()):
+async def handle_chess(  # noqa: C901, PLR0912, PLR0915
+    bot: Bot,  # noqa: ARG001
+    event: GroupMessageEvent,
+    arg: Message = CommandArg(),
+) -> None:
+    """棋类插件的唯一入口：按子命令分发。
+
+    ``bot`` 由 NoneBot 依赖注入提供，本处理器只回复当前会话，因此不直接使用它。
+    子命令分发天然是一个长分支链，拆成多函数反而会隐藏各分支的差异。
+    """
     group_id = event.group_id
     user_id = str(event.user_id)
     # 获取子命令和参数
@@ -87,7 +95,8 @@ async def handle_chess(bot: Bot, event: GroupMessageEvent, arg: Message = Comman
             )
         else:
             await chess.finish(
-                f"{user_id} 已加入 {side_cn}（当前 {len(game.get_players_ordered(side))} 人），等待对手加入"
+                f"{user_id} 已加入 {side_cn}"
+                f"（当前 {len(game.get_players_ordered(side))} 人），等待对手加入"
             )
 
     elif subcmd in ("leave", "resign"):
@@ -109,9 +118,11 @@ async def handle_chess(bot: Bot, event: GroupMessageEvent, arg: Message = Comman
             # 清理
             del games[group_id]
         else:
-            side = "白方" if game.get_side(user_id) == "white" else "黑方"
+            side_key = game.get_side(user_id)
+            remaining = len(game.get_players_ordered(side_key))
+            side = "白方" if side_key == "white" else "黑方"
             await chess.finish(
-                f"{user_id} 已离开游戏（{side}还剩 {len(game.get_players_ordered(game.get_side(user_id)))} 人，对局继续）"
+                f"{user_id} 已离开游戏（{side}还剩 {remaining} 人，对局继续）"
             )
 
     elif subcmd == "players":
@@ -141,7 +152,9 @@ async def handle_chess(bot: Bot, event: GroupMessageEvent, arg: Message = Comman
         if result:
             # 游戏结束
             pgn = game.get_pgn()
-            await chess.finish(f"{msg}\n{board_str}\n游戏结束！结果：{result}\nPGN:\n{pgn}")
+            await chess.finish(
+                f"{msg}\n{board_str}\n游戏结束！结果：{result}\nPGN:\n{pgn}"
+            )
             del games[group_id]
         else:
             # 继续
