@@ -1,0 +1,2 @@
+name: 'QQ Bot · ASIMO operator'
+description: 'Operates the NapCat QQ instances and NoneBot bot: starts/restarts both accounts, enforces the 40653 port discipline, and smoke-tests inside group 726525232.'
