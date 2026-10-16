@@ -1,7 +1,14 @@
 name: CI
 
-# Runs on every push and pull request. Read-only: this workflow only verifies
-# code, it never publishes or writes back to the repository.
+# Branch model (see README):
+#   dev  -> fast tests only: lint on one Python plus a single-version test run.
+#           It is the integration branch and is allowed to be red; the point is
+#           a quick signal, not a gate.
+#   main -> the full matrix (3.10-3.13), the config/secret gate, and the
+#           packaging check. Merging to main means "this is releasable".
+#
+# Read-only: this workflow only verifies code, it never publishes or writes
+# back to the repository. Publishing lives in release.yml.
 on:
   push:
     branches: ["**"]
@@ -50,7 +57,17 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # dev gets one interpreter so the feedback loop stays fast; main runs
+        # the full supported range (the project requires >=3.10,<4.0).
+        # `include`/`exclude` keep this declarative: every version is listed,
+        # and all but the newest are excluded off main.
         python-version: ["3.10", "3.11", "3.12", "3.13"]
+        exclude: >-
+          ${{
+            github.ref == 'refs/heads/main'
+              && fromJSON('[]')
+              || fromJSON('[{"python-version": "3.10"}, {"python-version": "3.11"}, {"python-version": "3.12"}]')
+          }}
     steps:
       - uses: actions/checkout@v4
 
@@ -74,6 +91,9 @@ jobs:
         run: uv run pytest tests -q
 
   config:
+    # The config and secret gates only run on main: they protect what is about
+    # to be released, and dev is explicitly allowed to be red.
+    if: github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch'
     name: Validate deployment config
     runs-on: ubuntu-latest
     steps:

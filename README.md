@@ -182,21 +182,47 @@ uv run ruff check src/plugins/chessbot tests
 
 The suite covers both board templates (including the compact 13-character width
 limit and its restricted character set), team/resign semantics and PGN headers,
-per-group template selection, and parses the CI configuration so a pipeline gate
-cannot silently disappear.
+per-group template selection, the AI opponent (search depth, board-orientation
+conversion and the same-turn auto-reply), the Pages site renderer, and parses
+the CI configuration so a pipeline gate cannot silently disappear.
 
 ## Continuous integration
 
-- `.github/workflows/ci.yml` — GitHub Actions: lint, tests on Python 3.10–3.13,
-  config validation, and a secret scan.
+The branch model decides how much verification runs:
+
+| Branch | What runs |
+| --- | --- |
+| `dev` | Fast path: lint plus the suite on Python 3.13 only. It is the integration branch and is allowed to be red. |
+| `main` | Full path: the 3.10–3.13 matrix, the config and secret gates, and publishing on a `v*` tag. |
+
+- `.github/workflows/ci.yml` — lint, tests, config validation and a secret scan.
+- `.github/workflows/release.yml` — verifies, then builds the distribution and
+  attaches it to the GitHub release on a `v*` tag.
+- `.github/workflows/pages.yml` — publishes the documentation to GitHub Pages
+  from `main`. There is no browser UI to publish: the bot lives in QQ, so the
+  site is the rendered README.
 - `.gitlab-ci.yml` — the same gates for GitLab, plus wheel building on the
   default branch and tags.
+- `.github/dependabot.yml` — weekly dependency and action updates, targeting
+  `dev`.
 
-Both pipelines fail the build if a credential-shaped string is committed.
+Every pipeline fails the build if a credential-shaped string is committed.
+
+## Codespaces
+
+`.devcontainer/devcontainer.json` is deliberately minimal and delegates all
+setup to `.devcontainer/post-create.sh`. The script installs `uv` through its
+official installer — nothing is assumed about the base image's toolchain — then
+syncs the dependencies, installs a supported interpreter, runs the test suite
+and creates `.env` from `.env.example`. It is idempotent, so a rebuild is safe.
 
 ## Documentation
 
-See the [NoneBot docs](https://nonebot.dev/).
+The rendered documentation is published to GitHub Pages by
+`.github/workflows/pages.yml`. The site is generated from this file by
+`.github/scripts/build_site.py`, which uses only the standard library.
+
+See also the [NoneBot docs](https://nonebot.dev/).
 
 ## License
 

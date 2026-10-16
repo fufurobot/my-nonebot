@@ -1,0 +1,102 @@
+name: Release
+
+# Publishing is deliberately tied to `main` only. The branch model is:
+#   dev  -> fast tests, may be red
+#   main -> the full matrix; a push here publishes artifacts
+#
+# Triggering on `v*` tags (and manual dispatch) means a release is an explicit
+# act, and the artifacts attached to it are the exact commit that passed the
+# full CI matrix.
+on:
+  push:
+    tags: ["v*"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Full verification before publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Sync dependencies
+        run: uv sync --all-groups
+
+      - name: Lint
+        run: uv run ruff check src/plugins/chessbot tests
+
+      - name: Check formatting
+        run: uv run ruff format --check src tests
+
+      - name: Run the full test suite
+        env:
+          ENVIRONMENT: test
+          DRIVER: "~none"
+        run: uv run pytest tests -q
+
+      - name: Fail if a credential-shaped string is committed
+        run: |
+          set -euo pipefail
+          if git grep -nIE 'github_pat_[A-Za-z0-9_]{20,}|ghp_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{15,}' -- .; then
+            echo "::error::a credential-shaped string is committed to the repository"
+            exit 1
+          fi
+          echo "no credentials found in tracked files"
+
+  publish:
+    name: Publish artifacts
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Build the distribution
+        run: uv build
+
+      - name: Build the Pages documentation bundle
+        run: |
+          python .github/scripts/build_site.py
+          tar -czf dist/docs-site.tar.gz -C site .
+
+      - name: Upload the workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dsh-bot-dist
+          path: dist/*
+          if-no-files-found: error
+
+      - name: Attach the artifacts to the GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true

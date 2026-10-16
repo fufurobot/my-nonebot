@@ -90,13 +90,31 @@ def request(
         return exc.code, body
 
 
+def graphql(query: str, variables: dict | None = None) -> tuple[int, object]:
+    """Run a GraphQL query against the GitHub API.
+
+    Some operations -- marking a pull request ready for review, for instance --
+    have no REST equivalent, so this is the escape hatch. Returns
+    ``(status, decoded_body)`` like :func:`request`; note that GraphQL reports
+    failures in an ``errors`` list with HTTP 200.
+    """
+    return request(
+        "POST",
+        "https://api.github.com/graphql",
+        {"query": query, "variables": variables or {}},
+    )
+
+
 def main(argv: list[str]) -> int:
     if len(argv) < 3:  # noqa: PLR2004 - argv shape, not a magic constant
         print(__doc__)
         return 2
     method, path = argv[1].upper(), argv[2]
     payload = json.loads(argv[3]) if len(argv) > 3 and argv[3] != "-" else None
-    status, body = request(method, path, payload)
+    if path == "graphql":
+        status, body = graphql(payload["query"] if payload else "", payload)
+    else:
+        status, body = request(method, path, payload)
     print(json.dumps(body, ensure_ascii=False, indent=2))
     return 0 if status < 400 else 1  # noqa: PLR2004 - HTTP status boundary
 
