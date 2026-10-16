@@ -1,0 +1,40 @@
+# Dependabot configuration.
+#
+# Two ecosystems matter here:
+#   - `pip`: the runtime and dev dependencies in pyproject.toml, which is how
+#     the bot and the test suite actually get their libraries.
+#   - `github-actions`: every workflow uses `@vN` tags, and a stale action tag
+#     is how a security fix silently fails to arrive.
+#
+# Updates target `dev`, the integration branch, so a dependency bump gets the
+# fast test signal before it can reach `main`.
+version: 2
+updates:
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    target-branch: dev
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+    groups:
+      # One pull request for the routine bumps keeps the review load sane;
+      # major versions stay separate because they need to be read.
+      python-minor:
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+    target-branch: dev
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(ci)"
+    groups:
+      actions:
+        patterns: ["*"]
