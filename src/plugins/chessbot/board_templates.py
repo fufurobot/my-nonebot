@@ -24,9 +24,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from jinja2 import Environment, FileSystemLoader, StrictUndefined
-
 import chess
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
