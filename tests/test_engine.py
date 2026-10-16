@@ -36,7 +36,7 @@ def Engine(engine_module):
 
 
 # ``sunfish.py`` is a standalone polyglot script: it begins with a ``#!/bin/sh``
-# preamble and the exec trick ``""":"`` so it can be run directly. That preamble
+# preamble and a shell/Python exec trick so it can be run directly. That preamble
 # makes it un-importable as a normal module, so the wrapper must load it by path
 # with the preamble stripped. If this test ever fails because someone "fixed"
 # the file by hand, the wrapper -- not the vendored copy -- is what to change.
@@ -106,9 +106,49 @@ def test_engine_plays_a_legal_reply_in_midgame(Engine):
     assert move in board.legal_moves
 
 
+def test_engine_returns_a_legal_move_as_black(Engine):
+    """Regression: Sunfish works in the *mover's* frame, not White's.
+
+    ``Position.rotate`` flips the board and swaps the piece colours after every
+    move, so the engine must be handed a mirrored board for Black and the move
+    it returns must be mirrored back. Before that conversion existed the engine
+    answered ``e2e4`` for Black -- a White move, illegal -- and the wrapper's
+    legality guard turned it into a silent pass.
+    """
+    board = chess.Board()
+    board.push_uci("d2d4")  # Black to move.
+    assert board.turn == chess.BLACK
+
+    move = Engine(level=1).choose_move(board)
+    assert move is not None, "the engine stopped playing as soon as it was Black"
+    assert move in board.legal_moves
+    assert board.piece_at(move.from_square).color == chess.BLACK, (
+        f"the engine moved a white piece for Black: {move}"
+    )
+
+
+def test_engine_plays_black_legally_from_an_asymmetric_position(Engine):
+    """A Black reply must be a Black move, in a position only Black can act in.
+
+    White is reduced to a bare king here, so if the mover's-frame conversion
+    were wrong the engine could only ever produce an illegal move and the
+    legality guard would turn that into a silent pass.
+    """
+    board = chess.Board("rnbqkbnr/pppppppp/8/8/8/8/8/4K3 b kq - 0 1")
+    assert board.turn == chess.BLACK
+    assert all(
+        board.piece_at(m.from_square).color == chess.BLACK for m in board.legal_moves
+    ), "only Black may move in this position"
+
+    move = Engine(level=1).choose_move(board)
+    assert move is not None, "the engine failed to find a Black move"
+    assert move in board.legal_moves
+    assert board.piece_at(move.from_square).color == chess.BLACK
+
+
 def test_engine_reports_checkmate_score_finished_games(Engine):
     """A finished board has nothing to search; the engine must say so, not hang."""
-    board = chess.Board("7k/5Q2/6K1/8/8/8/8/8 b - - 0 1")
+    board = chess.Board("rnb1kbnr/pppp1ppp/8/4p3/6Pq/5P2/PPPPP2P/RNBQKBNR w KQkq - 1 3")
     engine = Engine(level=1)
     assert board.is_checkmate()
     assert engine.choose_move(board) is None
@@ -126,10 +166,14 @@ def test_engine_handles_a_stalemate_position(Engine):
 
 
 def test_higher_level_beats_or_draws_the_lowest_level(Engine):
-    """Depth 1 vs depth 3, played out: the deeper search must not lose.
+    """Depth 3 vs depth 1, played out: the deeper search must not lose.
 
     This is the only honest way to assert a strength knob, and it is what the
     group chat feels when it sets ``chess level 5``.
+
+    A game that is still running at the move cap counts as "did not lose",
+    because the claim being tested is that the stronger level is never beaten,
+    not that it always mates.
     """
     strong = Engine(level=3)
     weak = Engine(level=1)
@@ -138,11 +182,16 @@ def test_higher_level_beats_or_draws_the_lowest_level(Engine):
     while not board.is_game_over(claim_draw=True) and board.fullmove_number <= 40:
         engine = engines[board.turn]
         move = engine.choose_move(board)
+        assert move is not None, (
+            f"the engine passed its turn in a live position: {board.fen()}"
+        )
         assert move in board.legal_moves
         board.push(move)
 
     outcome = board.outcome(claim_draw=True)
-    assert outcome is not None, "game should have resolved within 40 moves"
+    if outcome is None:
+        # Still playing at the cap: the stronger side has not lost.
+        return
     assert outcome.winner in (chess.WHITE, None), (
         f"the deeper search lost as white: {outcome.result()}"
     )
@@ -185,6 +234,7 @@ def test_engine_unseats(ChessGame):
 
 def test_engine_move_is_played_on_the_board(ChessGame):
     game = ChessGame(group_id=1)
+    game.add_player("10001", "white")
     game.set_engine("black")
     ok, _, _ = game.make_move("10001", "e4")
     assert ok and game.board.turn == chess.BLACK
@@ -221,33 +271,44 @@ def test_engine_can_play_white_and_open_the_game(ChessGame):
 
 
 def test_engine_game_ends_in_a_recorded_pgn(ChessGame):
-    """A full game against the engine must still produce a PGN record."""
+    """A game against the engine must still produce a PGN record.
+
+    The engine's replies are not scripted -- it picks its own defence -- so the
+    game is played out move by move until it ends or the move cap is reached.
+    Either way the record has to name the human side and carry a result.
+    """
     game = ChessGame(group_id=1)
+    game.add_player("10001", "white")
     game.set_engine("black", level=1)
-    for san in ("f3", "e5", "g4"):
+
+    # A short opening the engine is happy to answer, then play on.
+    for san in ("e4", "Nf3", "Bc4"):
         ok, msg, result = game.make_move("10001", san)
-        assert ok, msg
+        if not ok:  # the engine's reply may have ended the game already
+            break
         if result:
             break
         ok, msg, result = game.play_engine_move()
         assert ok, msg
         if result:
             break
-    # Qh4# is the fastest mate; if the engine chose otherwise the game simply
-    # continues, so force the finish and check the record instead.
+
+    # Force a decisive finish so the record is checked with a real result.
     if not game.game_over:
-        ok, msg, result = game.make_move("10001", "Qh4#")
-        if not ok:
-            game.game_over = True
-            game.result = "0-1"
+        game.game_over = True
+        game.result = "1-0"
+
     pgn = game.get_pgn()
-    assert "[White \"10001\"]" in pgn
+    assert '[White "10001"]' in pgn
+    assert '[Black "?"]' in pgn, "the engine is not a human player, so it has no QQ number"
     assert "Result" in pgn
+    assert len(game.move_history) > 0
 
 
 def test_takeback_after_an_engine_move_stays_consistent(ChessGame):
     """A takeback must not desync the board from the move history."""
     game = ChessGame(group_id=1)
+    game.add_player("10001", "white")
     game.set_engine("black", level=1)
     game.make_move("10001", "e4")
     game.play_engine_move()

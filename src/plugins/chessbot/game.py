@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import chess
 import chess.pgn
 
-from . import board_templates
+from . import board_templates, engine as engine_module
 
 
 @dataclass
@@ -25,6 +25,9 @@ class ChessGame:
         self.proposal: Proposal | None = None
         self.game_over = False
         self.result = None  # "1-0", "0-1", "1/2-1/2"
+        # 引擎（AI 对手）占用的阵营；None 表示没有 AI 参战
+        self.engine_side: str | None = None
+        self.engine_level: int = engine_module.DEFAULT_LEVEL
 
     def _roster(self, side: str) -> list[str]:
         """返回某一方的玩家列表（按加入顺序）。"""
@@ -108,7 +111,17 @@ class ChessGame:
         if move not in self.board.legal_moves:
             return False, "非法走法", None
 
-        # 执行走法
+        return self._apply_move(move, prefix="走法成功：")
+
+    def _apply_move(
+        self, move: chess.Move, prefix: str = ""
+    ) -> tuple[bool, str, str | None]:
+        """执行一步**已经验证过**的走法，并统一判定终局。
+
+        人类走棋与引擎走棋共用这一段，这样 AI 走法也必须遵守同一套
+        终局规则、同样的提议失效逻辑和同样的走法历史，不会出现两套真相。
+        ``prefix`` 只影响返回文案，用来区分人类与 AI 的走法。
+        """
         san = self.board.san(move)
         self.board.push(move)
         self.move_history.append(san)
@@ -122,22 +135,59 @@ class ChessGame:
             self.result = (
                 "1-0" if self.board.turn == chess.BLACK else "0-1"
             )  # 注意 turn 已经切换
-            return True, f"将杀！{san}", self.result
+            return True, f"{prefix}将杀！{san}", self.result
         if self.board.is_stalemate():
             self.game_over = True
             self.result = "1/2-1/2"
-            return True, f"逼和！{san}", self.result
+            return True, f"{prefix}逼和！{san}", self.result
         if self.board.is_insufficient_material():
             self.game_over = True
             self.result = "1/2-1/2"
-            return True, f"子力不足，和棋！{san}", self.result
+            return True, f"{prefix}子力不足，和棋！{san}", self.result
         if self.board.can_claim_draw():
             # 三次重复或五十回合规则，我们允许自动和棋
             self.game_over = True
             self.result = "1/2-1/2"
-            return True, f"自动和棋（三次重复/五十回合）{san}", self.result
+            return True, f"{prefix}自动和棋（三次重复/五十回合）{san}", self.result
+        return True, f"{prefix}{san}", None
 
-        return True, f"走法成功：{san}", None
+    # ── 引擎（AI）对手 ────────────────────────────────────────────────────
+
+    def set_engine(self, side: str | None, level: int | None = None) -> None:
+        """把引擎安排到某一方（``"white"``/``"black"``），``None`` 表示撤下。"""
+        self.engine_side = side
+        if level is not None:
+            self.engine_level = engine_module.normalise_level(level)
+
+    def is_engine_turn(self) -> bool:
+        """当前是否轮到引擎走棋。"""
+        if self.engine_side is None or self.game_over:
+            return False
+        turn = "white" if self.board.turn == chess.WHITE else "black"
+        return turn == self.engine_side
+
+    def play_engine_move(self) -> tuple[bool, str, str | None]:
+        """让引擎走一步，返回 (成功, 信息, 如果导致游戏结束，返回结果)。
+
+        引擎走法与人类走法走同一条终局判定路径（``_apply_move``），
+        因此 AI 同样会触发将杀、逼和与自动和棋。
+        """
+        if self.game_over:
+            return False, "游戏已经结束", None
+        if self.engine_side is None:
+            return False, "本局没有 AI 参战", None
+        if not self.is_engine_turn():
+            return False, "现在不是 AI 的回合", None
+
+        move = engine_module.Engine(level=self.engine_level).choose_move(self.board)
+        if move is None:
+            return False, "AI 没有可走的棋", None
+        if move not in self.board.legal_moves:
+            return False, "AI 给出了非法走法", None
+
+        san = self.board.san(move)
+        ok, _, result = self._apply_move(move, prefix="AI 走法：")
+        return ok, f"AI 走法：{san}", result
 
     def propose_takeback(self, user_id: str) -> bool:
         """提议悔棋，覆盖之前的提议"""
