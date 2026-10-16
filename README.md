@@ -200,7 +200,10 @@ The branch model decides how much verification runs:
   attaches it to the GitHub release on a `v*` tag.
 - `.github/workflows/pages.yml` — publishes the documentation to GitHub Pages
   from `main`. There is no browser UI to publish: the bot lives in QQ, so the
-  site is the rendered README.
+  site is the rendered README. Pages must be enabled once under
+  **Settings → Pages → Source: GitHub Actions**; enabling it is a repository
+  setting that the REST API will not accept from a CI token, so until then the
+  workflow emits a notice and skips its deploy steps rather than failing.
 - `.gitlab-ci.yml` — the same gates for GitLab, plus wheel building on the
   default branch and tags.
 - `.github/dependabot.yml` — weekly dependency and action updates, targeting
