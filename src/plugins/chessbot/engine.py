@@ -75,7 +75,7 @@ def load_sunfish() -> ModuleType:
 
     module = types.ModuleType("chessbot_sunfish")
     module.__file__ = str(SUNFISH_PATH)
-    exec(compile(body, str(SUNFISH_PATH), "exec"), module.__dict__)  # noqa: S102
+    exec(compile(body, str(SUNFISH_PATH), "exec"), module.__dict__)
     _sunfish_module = module
     return module
 
@@ -115,7 +115,14 @@ def to_sunfish_board(board: chess.Board) -> str:
     if board.turn == chess.BLACK:
         rows = [row.swapcase() for row in reversed(rows)]
 
-    return "".join([_PAD_ROW, _PAD_ROW, *(f" {row}\n" for row in rows), _PAD_ROW, _PAD_ROW])
+    return "".join(
+        [_PAD_ROW, _PAD_ROW, *(f" {row}\n" for row in rows), _PAD_ROW, _PAD_ROW]
+    )
+
+
+def _flip_square(square: chess.Square) -> chess.Square:
+    """Mirror a square across the middle of the board (a1 <-> a8)."""
+    return chess.square(chess.square_file(square), 7 - chess.square_rank(square))
 
 
 def from_sunfish_move(move: chess.Move, turn: chess.Color) -> chess.Move:
@@ -123,17 +130,15 @@ def from_sunfish_move(move: chess.Move, turn: chess.Color) -> chess.Move:
 
     The inverse of the mirroring in :func:`to_sunfish_board`: when Black is to
     move the move comes back flipped vertically, so both squares are mirrored
-    across the middle of the board (rank 1 <-> rank 8) and the promotion letter
-    is lowercased, because Sunfish emits ``"NBRQ"`` where UCI wants ``"nbrq"``.
-    Without this the engine answers with a move that reads correctly only from
-    its own point of view -- ``d2d4`` when it meant ``d7d5`` -- and the caller
-    sees an illegal move.
+    across the middle of the board. Without this the engine answers with a move
+    that reads correctly only from its own point of view -- ``d2d4`` when it
+    meant ``d7d5`` -- and the caller sees an illegal move.
     """
     if turn != chess.BLACK:
-        return chess.Move(move.from_square, move.to_square, move.promotion)
+        return move
     return chess.Move(
-        chess.square(chess.square_file(move.from_square), 7 - chess.square_rank(move.from_square)),
-        chess.square(chess.square_file(move.to_square), 7 - chess.square_rank(move.to_square)),
+        _flip_square(move.from_square),
+        _flip_square(move.to_square),
         move.promotion,
     )
 
@@ -146,7 +151,9 @@ class Engine:
     module-level engine state that could leak between groups.
     """
 
-    def __init__(self, level: int | None = None, time_limit: float = DEFAULT_TIME_LIMIT) -> None:
+    def __init__(
+        self, level: int | None = None, time_limit: float = DEFAULT_TIME_LIMIT
+    ) -> None:
         self.level = normalise_level(level)
         self.time_limit = time_limit
         self.last_seconds = 0.0

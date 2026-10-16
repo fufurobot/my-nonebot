@@ -55,7 +55,7 @@ ruff-check:
   stage: lint
   script:
     - *uv-setup
-    - uv run ruff check src/plugins/chess tests
+    - uv run ruff check src/plugins/chessbot tests
 
 # ---------------------------------------------------------------------------
 # test

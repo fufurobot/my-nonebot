@@ -14,14 +14,11 @@ order.
 
 from __future__ import annotations
 
-import sys
-
 import chess
 import pytest
 from nonebot.adapters.onebot.v11 import Bot, GroupMessageEvent, Message
 from nonebot.exception import FinishedException
 from nonebot.matcher import Matcher
-from nonebot.params import CommandArg
 
 GROUP_ID = 726525232
 HUMAN = "1362015219"
@@ -73,11 +70,10 @@ async def run_command(plugin, bot, text: str, user_id: str = HUMAN) -> list[str]
     """
     sent: list[str] = []
 
-    async def fake_send(self, message, **kwargs):  # noqa: ANN001, ANN202, ARG001
+    async def fake_send(self, message, **_kwargs: object):
         sent.append(str(message))
-        return None
 
-    async def fake_finish(self, message=None, **kwargs):  # noqa: ANN001, ANN202, ARG001
+    async def fake_finish(self, message=None, **_kwargs: object):
         if message is not None:
             sent.append(str(message))
         raise FinishedException
@@ -87,14 +83,16 @@ async def run_command(plugin, bot, text: str, user_id: str = HUMAN) -> list[str]
     matcher.finish = fake_finish.__get__(matcher, Matcher)  # type: ignore[method-assign]
 
     # The handler is written against the module-global ``chess`` matcher, so the
-    # stub has to be installed there for the duration of the call.
+    # stub has to be installed there for the duration of the call. ``arg`` is
+    # passed directly: ``CommandArg`` is a dependency marker resolved by
+    # NoneBot, not something a test can call.
     original = plugin.chess
     plugin.chess = matcher
     try:
         await plugin.handle_chess(
             bot,
             make_event(text, user_id),
-            CommandArg()(Message(text.split(" ", 1)[-1])),
+            Message(text.split(" ", 1)[-1]),
         )
     except FinishedException:
         pass
@@ -137,7 +135,7 @@ async def test_ai_rejects_an_unknown_side(plugin, bot):
 
 async def test_ai_level_argument_is_honoured(plugin, bot):
     await run_command(plugin, bot, "/chess ai black 5")
-    assert plugin.games[GROUP_ID].engine_level == 5  # noqa: PLR2004
+    assert plugin.games[GROUP_ID].engine_level == 5
 
 
 async def test_ai_is_listed_in_help(plugin, bot):
@@ -149,7 +147,7 @@ async def test_level_command_reports_and_sets(plugin, bot):
     sent = await run_command(plugin, bot, "/chess level")
     assert sent, "chess level with no argument must report the current level"
     await run_command(plugin, bot, "/chess level 4")
-    assert plugin.board_levels[GROUP_ID] == 4  # noqa: PLR2004
+    assert plugin.board_levels[GROUP_ID] == 4
 
 
 async def test_level_command_clamps_out_of_range(plugin, bot):
@@ -175,15 +173,31 @@ async def test_engine_replies_after_a_human_move(plugin, bot):
     assert any("e4" in part for part in sent)
 
 
-async def test_engine_does_not_reply_when_it_is_not_its_turn(plugin, bot):
-    await run_command(plugin, bot, "/chess join black")
-    await run_command(plugin, bot, "/chess ai white 1")
-    sent = await run_command(plugin, bot, "/chess join black")
+async def test_engine_does_not_reply_before_the_game_starts(plugin, bot):
+    """Seating the AI alone must not start the game or move for the absent side.
+
+    With nobody on the other side there is no game yet, so the engine must wait
+    rather than open against an empty seat.
+    """
+    sent = await run_command(plugin, bot, "/chess ai white 1")
     game = plugin.games[GROUP_ID]
-    assert game.is_engine_turn() is True
-    # No human move has happened, so the board must not have advanced.
-    assert game.move_history == []
-    assert sent
+    assert game.engine_side == "white"
+    assert game.move_history == [], "the engine moved before anyone was seated"
+    assert any("join" in part for part in sent), sent
+
+
+async def test_engine_does_not_reply_when_it_is_not_its_turn(plugin, bot):
+    """The engine moves only on its own turn, not after every human command."""
+    await run_command(plugin, bot, "/chess ai black 1")
+    await run_command(plugin, bot, "/chess join white")
+    game = plugin.games[GROUP_ID]
+    assert game.is_engine_turn() is False, "White is to move, so the AI must wait"
+
+    # Non-move commands must never advance the board.
+    before = list(game.move_history)
+    await run_command(plugin, bot, "/chess players")
+    await run_command(plugin, bot, "/chess board")
+    assert game.move_history == before, "the engine moved without being asked"
 
 
 async def test_join_as_black_lets_the_engine_white_open(plugin, bot):

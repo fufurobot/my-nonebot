@@ -42,7 +42,7 @@ jobs:
         run: uv run ruff format --check src tests
 
       - name: Lint
-        run: uv run ruff check src/plugins/chess tests
+        run: uv run ruff check src/plugins/chessbot tests
 
   test:
     name: Test (Python ${{ matrix.python-version }})

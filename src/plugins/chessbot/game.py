@@ -3,7 +3,8 @@ from dataclasses import dataclass
 import chess
 import chess.pgn
 
-from . import board_templates, engine as engine_module
+from . import board_templates
+from . import engine as engine_module
 
 
 @dataclass
@@ -80,9 +81,7 @@ class ChessGame:
 
         return True, None
 
-    def make_move(  # noqa: C901, PLR0911
-        self, user_id: str, move_str: str
-    ) -> tuple[bool, str, str | None]:
+    def make_move(self, user_id: str, move_str: str) -> tuple[bool, str, str | None]:
         """尝试走棋，返回 (成功, 信息, 如果导致游戏结束，返回结果)。
 
         每个合法走法都对应一种终局判定，因此这里必然有多个提前返回；

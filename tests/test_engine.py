@@ -160,6 +160,20 @@ def test_engine_handles_a_stalemate_position(Engine):
     assert Engine(level=1).choose_move(board) is None
 
 
+def test_engine_promotes_with_a_lowercase_uci_piece(Engine):
+    """Sunfish yields ``"Q"``; UCI requires ``"q"``, and chess.Move rejects ``Q``.
+
+    Parsing the raw uppercase letter raised ``InvalidMoveError`` mid-game, which
+    is exactly the kind of crash a group would hit in a long game.
+    """
+    board = chess.Board("8/P7/8/8/8/8/7k/4K3 w - - 0 1")
+    move = Engine(level=1).choose_move(board)
+    assert move is not None
+    assert move in board.legal_moves
+    assert move.promotion is not None, "the only sensible move is a promotion"
+    assert move.uci()[-1].islower()
+
+
 # --------------------------------------------------------------------------
 # strength is real
 # --------------------------------------------------------------------------
@@ -201,7 +215,7 @@ def test_search_respects_a_time_budget(Engine):
     """A level must not block the chat loop forever."""
     engine = Engine(level=3)
     engine.choose_move(chess.Board())
-    assert engine.last_seconds < 30, f"search took {engine.last_seconds:.1f}s"  # noqa: PLR2004
+    assert engine.last_seconds < 30, f"search took {engine.last_seconds:.1f}s"
 
 
 # --------------------------------------------------------------------------
@@ -243,14 +257,14 @@ def test_engine_move_is_played_on_the_board(ChessGame):
     ok, msg, result = game.play_engine_move()
     assert ok, msg
     assert game.board.turn == chess.WHITE
-    assert len(game.move_history) == 2  # noqa: PLR2004
+    assert len(game.move_history) == 2
     assert result is None
 
 
 def test_engine_move_is_refused_when_it_is_not_its_turn(ChessGame):
     game = ChessGame(group_id=1)
     game.set_engine("black")
-    ok, msg, _ = game.play_engine_move()
+    ok, _msg, _ = game.play_engine_move()
     assert not ok
     assert game.move_history == []
 
@@ -300,7 +314,9 @@ def test_engine_game_ends_in_a_recorded_pgn(ChessGame):
 
     pgn = game.get_pgn()
     assert '[White "10001"]' in pgn
-    assert '[Black "?"]' in pgn, "the engine is not a human player, so it has no QQ number"
+    assert '[Black "?"]' in pgn, (
+        "the engine is not a human player, so it has no QQ number"
+    )
     assert "Result" in pgn
     assert len(game.move_history) > 0
 
