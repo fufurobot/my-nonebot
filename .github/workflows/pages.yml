@@ -24,6 +24,8 @@ jobs:
   build:
     name: Build site
     runs-on: ubuntu-latest
+    outputs:
+      pages_enabled: ${{ steps.pages_check.outputs.enabled }}
     steps:
       - uses: actions/checkout@v4
 
@@ -36,12 +38,40 @@ jobs:
         uses: astral-sh/setup-uv@v5
 
       - name: Render the site
-        run: uv run --with markdown python .github/scripts/build_site.py
+        run: uv run python .github/scripts/build_site.py
+
+      # Enabling Pages is a one-time repository setting, and the REST endpoint
+      # for it needs the token to carry the `pages: write` permission -- which
+      # a CI token generally does not. Probing here means a repository that has
+      # not enabled Pages yet reports a clear reason instead of failing later
+      # with an opaque `configure-pages` error.
+      - name: Check whether Pages is enabled
+        id: pages_check
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if code=$(curl -sS -o /dev/null -w '%{http_code}' \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pages"); then
+            if [ "$code" = "200" ]; then
+              echo "enabled=true" >>"$GITHUB_OUTPUT"
+            else
+              echo "enabled=false" >>"$GITHUB_OUTPUT"
+              echo "::notice title=GitHub Pages is not enabled::Enable it under Settings > Pages and set Source to \"GitHub Actions\", then re-run this workflow. (The API returned HTTP $code.)"
+            fi
+          else
+            echo "enabled=false" >>"$GITHUB_OUTPUT"
+            echo "::notice title=GitHub Pages status unknown::Could not query the Pages API; skipping deployment."
+          fi
 
       - name: Configure Pages
+        if: steps.pages_check.outputs.enabled == 'true'
         uses: actions/configure-pages@v5
 
       - name: Upload artifact
+        if: steps.pages_check.outputs.enabled == 'true'
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
@@ -49,6 +79,7 @@ jobs:
   deploy:
     name: Deploy
     needs: build
+    if: needs.build.outputs.pages_enabled == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages

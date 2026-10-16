@@ -64,6 +64,52 @@ def test_pages_workflow_declares_the_required_permissions():
     assert "id-token: write" in workflow
 
 
+def test_pages_workflow_tolerates_pages_being_unenabled():
+    """Enabling Pages is a manual repository setting.
+
+    Creating the site through the API needs the token to carry `pages: write`,
+    which a CI token normally does not, so a repository that has not been
+    configured must produce a notice and skip rather than a red build that
+    hides real failures.
+    """
+    workflow = (REPO_ROOT / ".github" / "workflows" / "pages.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "pages_check" in workflow, "the workflow must probe whether Pages exists"
+    assert "::notice" in workflow, "a skipped deployment should explain itself"
+    assert "pages_enabled" in workflow, "the deploy job must consume the probe"
+
+
+def test_pages_workflow_guards_every_pages_dependent_step():
+    """A half-guarded workflow fails at `configure-pages` instead of skipping.
+
+    Parsed as YAML rather than by string offsets: the guard is a property of
+    the step, and that is exactly what the workflow schema records.
+    """
+    yaml = pytest.importorskip("yaml")
+    workflow = yaml.safe_load(
+        (REPO_ROOT / ".github" / "workflows" / "pages.yml").read_text(encoding="utf-8")
+    )
+    steps = {step.get("name"): step for step in workflow["jobs"]["build"]["steps"]}
+    for name in ("Configure Pages", "Upload artifact"):
+        assert name in steps, f"missing step: {name}"
+        guard = steps[name].get("if", "")
+        assert "pages_check.outputs.enabled" in guard, (
+            f"{name} must be skipped when Pages is not enabled"
+        )
+
+
+def test_pages_build_does_not_depend_on_pypi():
+    """The docs build must not need a package index to be reachable."""
+    workflow = (REPO_ROOT / ".github" / "workflows" / "pages.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "--with markdown" not in workflow, (
+        "the builder is standard-library only; installing a package adds a "
+        "failure mode for no benefit"
+    )
+
+
 def test_renders_headings(rendered: str):
     assert "<h1>dsh-bot</h1>" in rendered
     assert "<h2>" in rendered
