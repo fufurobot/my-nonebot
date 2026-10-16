@@ -165,3 +165,46 @@ def test_tracked_files_contain_no_secret_like_values():
         text = path.read_text(encoding="utf-8")
         for pattern in SECRET_PATTERNS:
             assert not pattern.search(text), f"{path.name} embeds a credential"
+
+
+# --------------------------------------------------------------------------
+# the plugin path is referenced consistently
+# --------------------------------------------------------------------------
+
+# The plugin directory was renamed `chess` -> `chessbot` so it stops shadowing
+# the third-party `chess` library. A stale reference is invisible until CI runs
+# (ruff) or the conftest fails to import, so it is pinned here instead.
+PLUGIN_DIR = "src/plugins/chessbot"
+STALE_PLUGIN_REFERENCES = (
+    re.compile(r"src[/\\]plugins[/\\]chess(?!bot)"),
+    re.compile(r"src\.plugins\.chess(?!bot)"),
+)
+
+
+def test_ci_checks_the_actual_plugin_directory():
+    for path in (GITHUB_WORKFLOWS / "ci.yml", GITLAB_CI):
+        text = path.read_text(encoding="utf-8")
+        assert PLUGIN_DIR in text, f"{path.name} does not lint {PLUGIN_DIR}"
+        for pattern in STALE_PLUGIN_REFERENCES:
+            assert not pattern.search(text), f"{path.name} references a stale path"
+
+
+def test_tests_load_the_actual_plugin_directory():
+    conftest = (REPO_ROOT / "tests" / "conftest.py").read_text(encoding="utf-8")
+    assert PLUGIN_DIR in conftest, "conftest must load the chessbot plugin"
+    for pattern in STALE_PLUGIN_REFERENCES:
+        assert not pattern.search(conftest), "conftest references a stale path"
+
+
+def test_readme_documents_the_actual_plugin_directory():
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert PLUGIN_DIR in readme, "README must name the real plugin directory"
+    for pattern in STALE_PLUGIN_REFERENCES:
+        assert not pattern.search(readme), "README references a stale path"
+
+
+def test_readme_documents_the_engine_commands():
+    """A feature the group cannot discover does not exist."""
+    readme = (REPO_ROOT / "README.md").read_text(encoding="utf-8")
+    assert "chess ai" in readme, "README must document the AI opponent"
+    assert "chess level" in readme, "README must document the level knob"
