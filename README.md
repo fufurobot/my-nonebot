@@ -49,6 +49,8 @@ default). `/chess help` reprints this list in chat.
 | `chess players` | Show both rosters with player counts. |
 | `chess board` | Show the current board. |
 | `chess move <move>` | Play a move in SAN or UCI form, e.g. `e4`, `Nf3`, `O-O`, `e2e4`. |
+| `chess ai [white\|black\|off] [level]` | Seat the built-in engine on a side, or `off` to unseat it. |
+| `chess level [1-5]` | Show or set the engine's search depth. |
 | `chess takeback` | Propose taking a move back; the opponent confirms with `chess agree`. |
 | `chess draw` | Propose a draw; the opponent confirms with `chess agree`. |
 | `chess agree` | Accept the pending proposal. |
@@ -57,7 +59,7 @@ default). `/chess help` reprints this list in chat.
 
 ### Board templates
 
-Board formats are Jinja templates under `src/plugins/chess/templates/`, so a new
+Board formats are Jinja templates under `src/plugins/chessbot/templates/`, so a new
 format is just a new `.j2` file — `AVAILABLE_MODES` is discovered from that
 directory. The mode is per group, chosen with `chess mode`, and every board
 output (`chess board`, join, move replies) uses it.
@@ -116,12 +118,39 @@ The bordered grid, for clients that render a proportional font predictably:
 
 #### Adding a template
 
-1. Add `src/plugins/chess/templates/<name>.j2`. It receives the context from
+1. Add `src/plugins/chessbot/templates/<name>.j2`. It receives the context from
    `board_templates.build_context()`: `files`, `ranks`, `ascii_files`,
    `ascii_ranks`, `space`, `blank`, and `rows` — each row carrying `rank`,
    `ascii_rank` and eight `cells` (each with `glyph` and `ascii_glyph`).
 2. It is picked up automatically: `chess mode <name>` works and `chess help`
    lists it.
+
+### Playing against the AI
+
+The plugin ships [Sunfish](https://github.com/thomasahle/sunfish) as
+`src/plugins/chessbot/sunfish.py`, so a group can play without a second human:
+
+```
+chess ai            # the engine takes the side with no players yet
+chess ai black      # or pick a side explicitly
+chess ai off        # unseat it
+chess level 4       # 1-5, higher searches deeper
+```
+
+The engine answers **inside the same turn** as your `chess move`, so the board
+never goes stale and the move order in chat always matches the game. Joining the
+side opposite the engine is enough to start: `chess ai white` then
+`chess join black` makes the engine open with White.
+
+Strength is search depth, one ply per level, so `chess level 5` really is
+stronger than `chess level 1` rather than just slower. The engine is a normal
+side member: it obeys team play, takeback and resign, and it appears in the PGN
+as `?` because it has no QQ number.
+
+`engine.py` is the only module that understands Sunfish. It strips the shell
+preamble the vendored file needs in order to run as a script, and it converts
+positions and moves across the two different board representations — Sunfish
+works in the *mover's* frame, where only its uppercase pieces can move.
 
 ### Team play and resigning
 
@@ -148,7 +177,7 @@ When a game ends, the bot prints a PGN with both rosters in the `White` and
 uv sync --all-groups      # install runtime and dev dependencies
 uv run pytest tests -q    # run the test suite
 uv run ruff format src tests
-uv run ruff check src/plugins/chess tests
+uv run ruff check src/plugins/chessbot tests
 ```
 
 The suite covers both board templates (including the compact 13-character width

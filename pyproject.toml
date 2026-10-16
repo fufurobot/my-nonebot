@@ -43,6 +43,11 @@ nonebot-plugin-localstore = ["nonebot_plugin_localstore"]
 [tool.ruff]
 line-length = 88
 target-version = "py310"
+# `sunfish.py` is vendored verbatim from upstream. Reformatting or "fixing" it
+# would make it impossible to diff against a new release, and its style is the
+# upstream project's business, not ours. `engine.py` is the adapter that keeps
+# the rest of the plugin away from it.
+exclude = ["src/plugins/chessbot/sunfish.py"]
 
 [tool.ruff.format]
 line-ending = "lf"
