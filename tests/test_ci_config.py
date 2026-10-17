@@ -296,6 +296,25 @@ def test_release_workflow_publishes_only_build_outputs():
     )
 
 
+def test_release_file_list_is_newline_delimited():
+    """`upload-artifact` splits `path` on newlines, not on spaces.
+
+    The explicit file list was first joined with spaces. The action then read
+    it as a single literal path and failed the release with "no files were
+    found" -- after the build itself had succeeded. The joined value must keep
+    its newlines, which also means it has to use the ``name<<EOF`` form of the
+    ``$GITHUB_OUTPUT`` protocol: a single-line ``name=value`` cannot carry them.
+    """
+    raw = (GITHUB_WORKFLOWS / "release.yml").read_text(encoding="utf-8")
+    assert "tr '\\n' ' '" not in raw, (
+        "joining the file list with spaces breaks the upload"
+    )
+    assert "%s\\n" in raw, "the file list must be written one path per line"
+    assert "files<<EOF" in raw, (
+        "a multi-line output needs the heredoc form of $GITHUB_OUTPUT"
+    )
+
+
 # --------------------------------------------------------------------------
 # Dependabot
 # --------------------------------------------------------------------------
