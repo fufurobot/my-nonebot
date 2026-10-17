@@ -90,14 +90,23 @@ jobs:
       # `uv build` writes `dist/.gitignore` (containing just `*`) so the build
       # output is not committed. A bare `dist/*` glob then publishes that
       # placeholder as a release asset, so the files are listed explicitly.
+      #
+      # The list is NEWLINE separated on purpose: `upload-artifact@v4` and
+      # `softprops/action-gh-release` split their `path`/`files` input on
+      # newlines, not on spaces. A space-separated list is read as one literal
+      # path and the upload fails with "no files were found".
       - name: List the files to publish
         id: dist
         run: |
           set -euo pipefail
-          files=$(ls -1 dist/*.whl dist/*.tar.gz | tr '\n' ' ')
+          files=$(ls -1 dist/*.whl dist/*.tar.gz)
           [ -n "$files" ] || { echo "::error::nothing to publish in dist/"; exit 1; }
-          echo "files=$files" >>"$GITHUB_OUTPUT"
-          echo "publishing: $files"
+          {
+            echo "files<<EOF"
+            printf '%s\n' "$files"
+            echo "EOF"
+          } >>"$GITHUB_OUTPUT"
+          printf 'publishing:\n%s\n' "$files"
 
       - name: Upload the workflow artifacts
         uses: actions/upload-artifact@v4
