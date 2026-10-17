@@ -264,6 +264,38 @@ def test_release_workflow_verifies_before_publishing():
     assert workflow["jobs"]["publish"]["needs"] == "verify"
 
 
+def test_release_workflow_publishes_only_build_outputs():
+    """`uv build` writes `dist/.gitignore`, which must not become an asset.
+
+    A bare `dist/*` glob let `upload-artifact`/`action-gh-release` pick that
+    placeholder up; the first real release shipped a 1-byte `default.gitignore`
+    alongside the wheel. The files are now selected by explicit extensions.
+    """
+    workflow = _load(GITHUB_WORKFLOWS / "release.yml")
+    publish_steps = workflow["jobs"]["publish"]["steps"]
+
+    upload = next(
+        s
+        for s in publish_steps
+        if s.get("uses", "").startswith("actions/upload-artifact")
+    )
+    release = next(
+        s
+        for s in publish_steps
+        if s.get("uses", "").startswith("softprops/action-gh-release")
+    )
+    for step in (upload, release):
+        assert (
+            step["with"]["files" if "files" in step["with"] else "path"] != "dist/*"
+        ), "an extensionless glob publishes uv's placeholder file"
+
+    raw = (GITHUB_WORKFLOWS / "release.yml").read_text(encoding="utf-8")
+    assert "dist/*.whl" in raw, "the wheel must be selected explicitly"
+    assert "dist/*.tar.gz" in raw, (
+        "the sdist and docs bundle must be selected explicitly"
+    )
+
+
 # --------------------------------------------------------------------------
 # Dependabot
 # --------------------------------------------------------------------------

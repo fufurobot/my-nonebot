@@ -87,16 +87,28 @@ jobs:
           python .github/scripts/build_site.py
           tar -czf dist/docs-site.tar.gz -C site .
 
+      # `uv build` writes `dist/.gitignore` (containing just `*`) so the build
+      # output is not committed. A bare `dist/*` glob then publishes that
+      # placeholder as a release asset, so the files are listed explicitly.
+      - name: List the files to publish
+        id: dist
+        run: |
+          set -euo pipefail
+          files=$(ls -1 dist/*.whl dist/*.tar.gz | tr '\n' ' ')
+          [ -n "$files" ] || { echo "::error::nothing to publish in dist/"; exit 1; }
+          echo "files=$files" >>"$GITHUB_OUTPUT"
+          echo "publishing: $files"
+
       - name: Upload the workflow artifacts
         uses: actions/upload-artifact@v4
         with:
           name: dsh-bot-dist
-          path: dist/*
+          path: ${{ steps.dist.outputs.files }}
           if-no-files-found: error
 
       - name: Attach the artifacts to the GitHub release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: ${{ steps.dist.outputs.files }}
           generate_release_notes: true
